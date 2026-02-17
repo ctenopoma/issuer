@@ -25,12 +25,34 @@ CREATE TABLE IF NOT EXISTS comments (
     created_at TEXT    NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS issue_reactions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    issue_id    INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+    reacted_by  TEXT    NOT NULL,
+    reaction    TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    UNIQUE(issue_id, reacted_by, reaction)
+);
+
+CREATE TABLE IF NOT EXISTS comment_reactions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    comment_id  INTEGER NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
+    reacted_by  TEXT    NOT NULL,
+    reaction    TEXT    NOT NULL,
+    created_at  TEXT    NOT NULL,
+    UNIQUE(comment_id, reacted_by, reaction)
+);
+
 CREATE INDEX IF NOT EXISTS idx_issues_status
     ON issues(status);
 CREATE INDEX IF NOT EXISTS idx_issues_created_at
     ON issues(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_issue_id
     ON comments(issue_id);
+CREATE INDEX IF NOT EXISTS idx_issue_reactions_issue_id
+    ON issue_reactions(issue_id);
+CREATE INDEX IF NOT EXISTS idx_comment_reactions_comment_id
+    ON comment_reactions(comment_id);
 
 CREATE TABLE IF NOT EXISTS labels (
     id   INTEGER PRIMARY KEY AUTOINCREMENT,

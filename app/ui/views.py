@@ -25,6 +25,7 @@ from app.config import (
     SHADOW_ELEVATION,
     DEFAULT_PAGE_SIZE,
 )
+from app.domain.reactions import REACTION_OPTIONS
 from app.services import issue_service, filter_service, milestone_service
 from app.ui_helpers import (
     format_datetime,
@@ -774,6 +775,8 @@ def build_detail_view(
 
     comments = issue_service.list_comments(issue_id)
     labels = issue_service.get_labels(issue_id)
+    issue_reactions = issue_service.get_issue_reactions(issue_id, user)
+    comment_reactions_map = issue_service.get_comment_reactions(issue_id, user)
     assignee = issue["assignee"] or "未割り当て"
     milestone = None
     milestone_stats: tuple[int, int, int] | None = None
@@ -786,6 +789,15 @@ def build_detail_view(
             milestone_stats = milestone_service.progress(issue["milestone_id"])
         except Exception:
             milestone_stats = None
+
+    def refresh_view():
+        page.views.pop()
+        page.views.append(
+            build_detail_view(
+                page, state, user, issue_id, on_back=on_back, on_deleted=on_deleted
+            )
+        )
+        page.update()
 
     def close_dialog(dialog: ft.AlertDialog):
         dialog.open = False
@@ -834,26 +846,149 @@ def build_detail_view(
             return
         issue_service.add_comment(issue_id, body, user)
         comment_input.value = ""
-        page.views.pop()
-        page.views.append(
-            build_detail_view(page, state, user, issue_id, on_back=on_back, on_deleted=on_deleted)
-        )
-        page.update()
+        refresh_view()
 
     def on_toggle_status(e):
         issue_service.toggle_status(issue_id)
-        page.views.pop()
-        page.views.append(
-            build_detail_view(page, state, user, issue_id, on_back=on_back, on_deleted=on_deleted)
-        )
-        page.update()
+        refresh_view()
 
     def on_delete_comment(cid: int):
         issue_service.delete_comment(cid, user)
-        page.views.pop()
-        page.views.append(
-            build_detail_view(page, state, user, issue_id, on_back=on_back, on_deleted=on_deleted)
+        refresh_view()
+
+    def on_toggle_issue_reaction(reaction: str):
+        if state.mode != "edit":
+            return
+        issue_service.toggle_issue_reaction(issue_id, reaction, user)
+        refresh_view()
+
+    def on_toggle_comment_reaction(comment_id: int, reaction: str):
+        if state.mode != "edit":
+            return
+        issue_service.toggle_comment_reaction(comment_id, reaction, user)
+        refresh_view()
+
+    def build_reaction_bar(
+        summary: dict,
+        on_toggle,
+        on_add,
+        disabled: bool = False,
+    ) -> ft.Row:
+        chips: list[ft.Control] = []
+
+        # Show only reactions that exist
+        if summary:
+            for emoji in REACTION_OPTIONS:
+                data = summary.get(emoji)
+                if not data:
+                    continue
+                count = int(data.get("count", 0) or 0)
+                reacted = bool(data.get("reacted", False))
+                users_list = data.get("users") or []
+                tooltip = ", ".join(users_list) if users_list else None
+                chips.append(
+                    ft.Container(
+                        content=ft.Row(
+                            controls=[
+                                ft.Text(emoji, size=16),
+                                ft.Text(str(count), size=12, color=COLOR_TEXT_MUTED),
+                            ],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        padding=ft.Padding.symmetric(horizontal=10, vertical=6),
+                        bgcolor="#EAF2FF" if reacted else COLOR_CARD,
+                        border=ft.border.all(1, COLOR_PRIMARY if reacted else COLOR_BORDER),
+                        border_radius=12,
+                        ink=True,
+                        tooltip=tooltip,
+                        on_click=None if disabled else (lambda _e, r=emoji: on_toggle(r)),
+                    )
+                )
+
+        add_button = None
+        if not disabled:
+            add_button = ft.PopupMenuButton(
+                icon=ft.Icons.ADD,
+                tooltip="リアクションを追加",
+                items=[
+                    ft.PopupMenuItem(
+                        content=ft.Text(emoji),
+                        on_click=(lambda _e, r=emoji: on_add(r)),
+                    )
+                    for emoji in REACTION_OPTIONS
+                ],
+            )
+
+        controls = chips + ([add_button] if add_button else [])
+        return ft.Row(
+            controls=controls,
+            spacing=8,
+            run_spacing=8,
+            wrap=True,
+            vertical_alignment=ft.CrossAxisAlignment.CENTER,
         )
+
+    def show_edit_comment_dialog(comment):
+        edit_field = ft.TextField(
+            width=900,
+            height=520,
+            label="コメントを編集",
+            value=comment["body"],
+            multiline=True,
+            min_lines=6,
+            max_lines=18,
+            border_color=COLOR_BORDER,
+            focused_border_color=COLOR_PRIMARY,
+            border_radius=BORDER_RADIUS_BTN,
+            suffix=ft.IconButton(
+                icon=ft.Icons.IMAGE,
+                icon_color=COLOR_PRIMARY,
+                tooltip="クリップボード画像を貼り付け",
+                on_click=lambda _e: insert_clipboard_image(edit_field),
+            ),
+        )
+        error_text = ft.Text("", color=COLOR_DANGER, size=12)
+
+        def on_save(_e=None):
+            new_body = (edit_field.value or "").strip()
+            if not new_body:
+                error_text.value = "⚠ コメントを入力してください"
+                page.update()
+                return
+            issue_service.update_comment(comment["id"], new_body, user)
+            dlg.open = False
+            refresh_view()
+
+        def on_cancel(_e=None):
+            dlg.open = False
+            page.update()
+
+        dlg = ft.AlertDialog(
+            modal=True,
+            title=ft.Text("コメントを編集", weight=ft.FontWeight.BOLD),
+            content=ft.Container(
+                width=940,
+                height=680,
+                content=ft.Column(
+                    controls=[edit_field, error_text],
+                    spacing=12,
+                    tight=True,
+                ),
+            ),
+            actions=[
+                ft.TextButton("キャンセル", on_click=on_cancel),
+                ft.FilledButton(
+                    "保存",
+                    style=ft.ButtonStyle(bgcolor=COLOR_PRIMARY, color="white"),
+                    on_click=on_save,
+                ),
+            ],
+            actions_alignment=ft.MainAxisAlignment.END,
+            shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_CARD),
+        )
+        page.overlay.append(dlg)
+        dlg.open = True
         page.update()
 
     def insert_clipboard_image(target_field, on_fail_msg="クリップボードに画像がありません"):
@@ -938,11 +1073,7 @@ def build_detail_view(
                 milestone_id,
             )
             edit_dlg.open = False
-            page.views.pop()
-            page.views.append(
-                build_detail_view(page, state, user, issue_id, on_back=on_back, on_deleted=on_deleted)
-            )
-            page.update()
+            refresh_view()
 
         def on_cancel(ev):
             edit_dlg.open = False
@@ -1003,25 +1134,40 @@ def build_detail_view(
         padding=ft.Padding.symmetric(horizontal=14, vertical=4),
     )
 
-    header_actions = [status_badge]
+    toggle_label = "Close Issue" if issue["status"] == "OPEN" else "Reopen Issue"
+    toggle_color = COLOR_DANGER if issue["status"] == "OPEN" else COLOR_OPEN
+    toggle_icon = ft.Icons.CHECK_CIRCLE_OUTLINE if issue["status"] == "OPEN" else ft.Icons.ADJUST
+
+    toggle_button = ft.FilledButton(
+        toggle_label,
+        icon=toggle_icon,
+        style=ft.ButtonStyle(
+            bgcolor=toggle_color,
+            color="white",
+            shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_BTN),
+        ),
+        on_click=on_toggle_status,
+        disabled=state.mode != "edit",
+    )
+
+    header_actions = []
     if state.mode == "edit":
-        header_actions.insert(
-            0,
-            ft.IconButton(
-                icon=ft.Icons.EDIT_NOTE,
-                tooltip="Issue を編集",
-                on_click=show_edit_dialog,
-            ),
+        header_actions.extend(
+            [
+                ft.IconButton(
+                    icon=ft.Icons.DELETE_OUTLINE,
+                    tooltip="Issue を削除",
+                    icon_color=COLOR_DANGER,
+                    on_click=on_delete_issue,
+                ),
+                ft.IconButton(
+                    icon=ft.Icons.EDIT_NOTE,
+                    tooltip="Issue を編集",
+                    on_click=show_edit_dialog,
+                ),
+            ]
         )
-        header_actions.insert(
-            0,
-            ft.IconButton(
-                icon=ft.Icons.DELETE_OUTLINE,
-                tooltip="Issue を削除",
-                icon_color=COLOR_DANGER,
-                on_click=on_delete_issue,
-            ),
-        )
+    header_actions.extend([toggle_button, status_badge])
 
     header = ft.Row(
         controls=[
@@ -1182,6 +1328,15 @@ def build_detail_view(
                             *(
                                 [
                                     ft.IconButton(
+                                        icon=ft.Icons.EDIT,
+                                        icon_color=COLOR_PRIMARY,
+                                        icon_size=16,
+                                        tooltip="編集",
+                                        on_click=lambda e, comment=c: (
+                                            show_edit_comment_dialog(comment)
+                                        ),
+                                    ),
+                                    ft.IconButton(
                                         icon=ft.Icons.DELETE_OUTLINE,
                                         icon_color=COLOR_DANGER,
                                         icon_size=16,
@@ -1203,6 +1358,15 @@ def build_detail_view(
                         ),
                         padding=ft.Padding.only(left=40),
                     ),
+                    ft.Container(
+                        content=build_reaction_bar(
+                            comment_reactions_map.get(c["id"], {}),
+                            lambda r, cid=c["id"]: on_toggle_comment_reaction(cid, r),
+                            lambda r, cid=c["id"]: on_toggle_comment_reaction(cid, r),
+                            state.mode != "edit",
+                        ),
+                        padding=ft.Padding.only(left=40, top=6),
+                    ),
                 ],
                 spacing=8,
             ),
@@ -1219,10 +1383,6 @@ def build_detail_view(
         )
 
     comment_cards = [build_comment_card(c) for c in comments]
-
-    toggle_label = "Close Issue" if issue["status"] == "OPEN" else "Reopen Issue"
-    toggle_color = COLOR_DANGER if issue["status"] == "OPEN" else COLOR_OPEN
-    toggle_icon = ft.Icons.CHECK_CIRCLE_OUTLINE if issue["status"] == "OPEN" else ft.Icons.ADJUST
 
     footer = ft.Container(
         content=ft.Column(
@@ -1257,21 +1417,6 @@ def build_detail_view(
                     alignment=ft.MainAxisAlignment.START,
                     vertical_alignment=ft.CrossAxisAlignment.START,
                 ),
-                ft.Container(
-                    content=ft.FilledButton(
-                        toggle_label,
-                        icon=toggle_icon,
-                        style=ft.ButtonStyle(
-                            bgcolor=toggle_color,
-                            color="white",
-                            shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_BTN),
-                        ),
-                        on_click=on_toggle_status,
-                        disabled=state.mode != "edit",
-                    ),
-                    alignment=ft.Alignment.CENTER_RIGHT,
-                    padding=ft.Padding.only(top=8),
-                ),
             ],
             spacing=8,
         ),
@@ -1288,6 +1433,34 @@ def build_detail_view(
             label_block,
             ft.Container(height=16),
             body_area,
+            ft.Container(
+                width=980,
+                content=ft.Column(
+                    controls=[
+                        ft.Row(
+                            controls=[
+                                ft.Icon(ft.Icons.EMOJI_EMOTIONS, size=18, color=COLOR_TEXT_MUTED),
+                                ft.Text(
+                                    "リアクション",
+                                    size=14,
+                                    weight=ft.FontWeight.W_600,
+                                    color=COLOR_TEXT_MAIN,
+                                ),
+                            ],
+                            spacing=6,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                        ),
+                        build_reaction_bar(
+                            issue_reactions,
+                            on_toggle_issue_reaction,
+                            on_toggle_issue_reaction,
+                            state.mode != "edit",
+                        ),
+                    ],
+                    spacing=6,
+                ),
+                padding=ft.Padding.only(top=12, bottom=4),
+            ),
             ft.Container(height=32),
             ft.Text(
                 f"💬  コメント ({len(comments)})",

@@ -176,3 +176,44 @@ def get_labels_map(issue_ids: list[int]) -> dict[int, list[str]]:
         for row in conn.execute(query, issue_ids).fetchall():
             result.setdefault(row["issue_id"], []).append(row["name"])
     return result
+
+
+def get_reactions(issue_id: int, current_user: str) -> dict[str, dict[str, int | bool]]:
+    summary: dict[str, dict[str, int | bool | list[str]]] = {}
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT reaction,
+                   COUNT(*) AS cnt,
+                   SUM(CASE WHEN reacted_by = ? THEN 1 ELSE 0 END) AS mine,
+                   GROUP_CONCAT(reacted_by, ',') AS users
+            FROM issue_reactions
+            WHERE issue_id = ?
+            GROUP BY reaction
+            """,
+            (current_user, issue_id),
+        ).fetchall()
+        for row in rows:
+            users = row["users"].split(",") if row["users"] else []
+            summary[row["reaction"]] = {
+                "count": row["cnt"],
+                "reacted": (row["mine"] or 0) > 0,
+                "users": users,
+            }
+    return summary
+
+
+def toggle_reaction(issue_id: int, reaction: str, current_user: str) -> None:
+    with get_connection() as conn:
+        exists = conn.execute(
+            "SELECT id FROM issue_reactions WHERE issue_id = ? AND reacted_by = ? AND reaction = ?",
+            (issue_id, current_user, reaction),
+        ).fetchone()
+        if exists:
+            conn.execute("DELETE FROM issue_reactions WHERE id = ?", (exists["id"],))
+        else:
+            conn.execute(
+                "INSERT INTO issue_reactions (issue_id, reacted_by, reaction, created_at) VALUES (?, ?, ?, ?)",
+                (issue_id, current_user, reaction, now_iso()),
+            )
+        conn.execute("UPDATE issues SET updated_at = ? WHERE id = ?", (now_iso(), issue_id))

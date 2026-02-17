@@ -8,9 +8,11 @@ import base64
 import logging
 import signal
 import sys
+from io import BytesIO
 from pathlib import Path
 
 import flet as ft
+from PIL import Image
 
 from app.database.schema import initialize_schema
 from app.config import APP_TITLE, COLOR_BG, COLOR_PRIMARY
@@ -30,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_app_icon() -> str | None:
-    """Load app.ico from bundled locations and return base64 string."""
+    """Load app.ico, convert to PNG, and return base64 string for Flet window icon."""
 
     search_roots = [
         Path(getattr(sys, "_MEIPASS", "")),
@@ -41,7 +43,13 @@ def _load_app_icon() -> str | None:
     for root in search_roots:
         candidate = root / "app.ico"
         if candidate.exists():
-            return base64.b64encode(candidate.read_bytes()).decode("utf-8")
+            try:
+                with Image.open(candidate) as img:
+                    buffer = BytesIO()
+                    img.save(buffer, format="PNG")
+                    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+            except Exception:
+                logger.warning("Failed to load app.ico for window icon", exc_info=True)
 
     return None
 
