@@ -4,8 +4,11 @@ Issue Manager v1.0
 """
 
 import atexit
-import signal
+import base64
 import logging
+import signal
+import sys
+from pathlib import Path
 
 import flet as ft
 
@@ -24,6 +27,23 @@ from app.utils.lock import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _load_app_icon() -> str | None:
+    """Load app.ico from bundled locations and return base64 string."""
+
+    search_roots = [
+        Path(getattr(sys, "_MEIPASS", "")),
+        Path(__file__).resolve().parent.parent,
+        Path.cwd(),
+    ]
+
+    for root in search_roots:
+        candidate = root / "app.ico"
+        if candidate.exists():
+            return base64.b64encode(candidate.read_bytes()).decode("utf-8")
+
+    return None
 
 
 # ==========================================================================
@@ -53,7 +73,11 @@ signal.signal(signal.SIGTERM, _cleanup_handler)
 def main(page: ft.Page):
     global _app_state
 
+    icon_b64 = _load_app_icon()
+
     page.title = APP_TITLE
+    if icon_b64:
+        page.window_icon = icon_b64
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COLOR_BG
     page.padding = 0

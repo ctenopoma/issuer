@@ -12,6 +12,8 @@ def build():
         "Issuer",
         "--icon",
         "app.ico",
+        "--add-data",
+        "app.ico;.",
         "--noconsole",
         "--clean",
         "--onefile",  # Generate a single executable
