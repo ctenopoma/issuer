@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def _load_app_icon() -> str | None:
-    """Load app.ico, convert to PNG, and return base64 string for Flet window icon."""
+    """Load app.ico and return a data URL usable for the Flet window icon."""
 
     search_roots = [
         Path(getattr(sys, "_MEIPASS", "")),
@@ -47,9 +47,11 @@ def _load_app_icon() -> str | None:
                 with Image.open(candidate) as img:
                     buffer = BytesIO()
                     img.save(buffer, format="PNG")
-                    return base64.b64encode(buffer.getvalue()).decode("utf-8")
+                    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
+                    return f"data:image/png;base64,{encoded}"
             except Exception:
                 logger.warning("Failed to load app.ico for window icon", exc_info=True)
+                return str(candidate)
 
     return None
 
@@ -84,12 +86,12 @@ signal.signal(signal.SIGTERM, _cleanup_handler)
 def main(page: ft.Page):
     global _app_state
 
-    icon_b64 = _load_app_icon()
+    icon_data = _load_app_icon()
 
     page.title = APP_TITLE
-    if icon_b64:
-        page.window_icon = icon_b64
-    page.window_maximized = True
+    if icon_data:
+        page.window.icon = icon_data
+    page.window.maximized = True
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COLOR_BG
     page.padding = 0
@@ -241,18 +243,19 @@ def main(page: ft.Page):
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
-    def on_window_event(e):
-        if e.data == "close":
+    async def on_window_event(e: ft.WindowEvent):
+        if e.type == ft.WindowEventType.CLOSE:
             logger.debug(f"Window close event, mode={state.mode}")
             try:
                 if state.mode == "edit":
                     release_lock()
             except Exception:
                 logger.warning("Failed to release lock on window close", exc_info=True)
-            page.window_prevent_close = False
+            page.window.prevent_close = False
+            await page.window.close()
 
-    page.window_prevent_close = True
-    page.on_window_event = on_window_event
+    page.window.prevent_close = True
+    page.window.on_event = on_window_event
 
     def show_zombie_dialog():
         lock_data = read_lock() or {}
