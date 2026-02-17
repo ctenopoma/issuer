@@ -64,8 +64,11 @@ _app_state: AppState | None = None
 def _cleanup_handler(signum=None, frame=None):
     """シグナルハンドラー兼クリーンアップ。"""
     global _app_state
-    if _app_state and _app_state.mode == "edit":
-        release_lock()
+    try:
+        if _app_state and _app_state.mode == "edit":
+            release_lock()
+    except Exception:
+        pass  # クリーンアップ中の例外は無視する
 
 
 atexit.register(_cleanup_handler)
@@ -86,6 +89,7 @@ def main(page: ft.Page):
     page.title = APP_TITLE
     if icon_b64:
         page.window_icon = icon_b64
+    page.window_maximized = True
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COLOR_BG
     page.padding = 0
@@ -240,8 +244,11 @@ def main(page: ft.Page):
     def on_window_event(e):
         if e.data == "close":
             logger.debug(f"Window close event, mode={state.mode}")
-            if state.mode == "edit":
-                release_lock()
+            try:
+                if state.mode == "edit":
+                    release_lock()
+            except Exception:
+                logger.warning("Failed to release lock on window close", exc_info=True)
             page.window_prevent_close = False
 
     page.window_prevent_close = True
@@ -286,7 +293,19 @@ def main(page: ft.Page):
         dialog.open = True
         page.update()
 
-    initialize_schema()
+    try:
+        initialize_schema()
+    except Exception as exc:
+        logger.exception("Failed to initialize database schema")
+        page.overlay.append(
+            ft.AlertDialog(
+                title=ft.Text("データベース初期化エラー"),
+                content=ft.Text(f"データベースの初期化に失敗しました。\n詳細: {exc}"),
+                open=True,
+            )
+        )
+        page.update()
+        return
 
     if lock_mode == "zombie":
         show_zombie_dialog()

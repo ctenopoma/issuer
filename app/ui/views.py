@@ -1302,13 +1302,14 @@ def build_detail_view(
 
     def build_comment_card(c) -> ft.Container:
         is_mine = c["created_by"] == user
+        display_initial = c["created_by"][0].upper() if c["created_by"] else "?"
         return ft.Container(
             content=ft.Column(
                 controls=[
                     ft.Row(
                         controls=[
                             ft.CircleAvatar(
-                                content=ft.Text(c["created_by"][0].upper()),
+                                content=ft.Text(display_initial),
                                 radius=14,
                                 bgcolor=COLOR_PRIMARY,
                                 color="white",
@@ -1392,7 +1393,7 @@ def build_detail_view(
                 ft.Row(
                     controls=[
                         ft.CircleAvatar(
-                            content=ft.Text(user[0].upper()),
+                            content=ft.Text(user[0].upper() if user else "?"),
                             radius=16,
                             bgcolor=COLOR_PRIMARY,
                             color="white",
@@ -1423,10 +1424,19 @@ def build_detail_view(
         padding=ft.Padding.only(top=12, bottom=32),
     )
 
-    body_column = ft.Column(
+    # Pin the header row while allowing the body to scroll independently.
+    pinned_header = ft.Container(
+        content=ft.Container(width=980, content=header),
+        padding=ft.Padding.only(bottom=8),
+        bgcolor=COLOR_BG,
+        border=ft.border.only(bottom=ft.BorderSide(1, COLOR_BORDER)),
+    )
+
+    scrollable_content = ft.Column(
+        expand=True,
+        scroll=ft.ScrollMode.AUTO,
+        spacing=4,
         controls=[
-            header,
-            ft.Container(height=4),
             meta,
             *( [milestone_block, ft.Container(height=12)] if milestone_block else [] ),
             ft.Container(height=16),
@@ -1472,9 +1482,6 @@ def build_detail_view(
             *comment_cards,
             footer,
         ],
-        scroll=ft.ScrollMode.AUTO,
-        expand=True,
-        spacing=4,
     )
 
     return ft.View(
@@ -1482,6 +1489,8 @@ def build_detail_view(
         appbar=build_appbar(state.mode, state.locked_by, user),
         bgcolor=COLOR_BG,
         padding=ft.Padding.symmetric(horizontal=24, vertical=16),
-        controls=[body_column],
-        scroll=ft.ScrollMode.HIDDEN,
+        controls=[
+            pinned_header,
+            scrollable_content,
+        ],
     )

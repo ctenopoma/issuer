@@ -28,7 +28,13 @@ def save_attachment(src_path: str) -> str:
 
     Returns:
         Markdown に挿入する相対パス（例: "assets/20250217_143022_a3f8b1.png"）
+
+    Raises:
+        FileNotFoundError: コピー元ファイルが存在しない場合
     """
+    if not os.path.isfile(src_path):
+        raise FileNotFoundError(f"ファイルが見つかりません: {src_path}")
+
     os.makedirs(ASSETS_DIR, exist_ok=True)
 
     ext = os.path.splitext(src_path)[1].lower()
@@ -58,7 +64,11 @@ def save_clipboard_image() -> str | None:
     if img is None:
         return None
 
-    os.makedirs(ASSETS_DIR, exist_ok=True)
+    try:
+        os.makedirs(ASSETS_DIR, exist_ok=True)
+    except OSError:
+        return None
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     uid = uuid.uuid4().hex[:6]
     filename = f"{timestamp}_{uid}.png"

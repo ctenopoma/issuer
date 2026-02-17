@@ -1,24 +1,4 @@
 """
-db.py - データベース操作モジュール
-Issue Manager v1.0
-"""
-import sqlite3
-from datetime import datetime
-
-from app.config import DB_PATH
-
-
-# ---------------------------------------------------------------------------
-# 接続
-# ---------------------------------------------------------------------------
-
-def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row          # カラム名でアクセス可能
-    conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")  # 共有フォルダ越しの競合を軽減
-    return conn
-"""
 db.py - Compatibility façade to the refactored data/service layers.
 Single responsibility: provide the legacy API used by ui.py while delegating
 to repository/service modules that follow single-responsibility design.
@@ -135,4 +115,3 @@ def update_milestone(milestone_id: int, **kwargs):
 
 def delete_milestone(milestone_id: int):
     return milestone_service.delete(milestone_id)
-    query = "SELECT * FROM issues WHERE (title LIKE ? OR body LIKE ?)"

@@ -25,7 +25,11 @@ def update(milestone_id: int, **kwargs) -> None:
     current = milestone_repo.get(milestone_id)
     if not current:
         raise ValueError("Milestone not found")
+    # id やタイムスタンプ系フィールドの不正更新を防止
+    protected_fields = {"id", "created_at"}
     for k, v in kwargs.items():
+        if k in protected_fields:
+            continue
         if hasattr(current, k):
             setattr(current, k, v)
     current.updated_at = now_iso()

@@ -24,6 +24,8 @@ def add_comment(issue_id: int, body: str, created_by: str) -> int:
             "UPDATE issues SET updated_at = ? WHERE id = ?",
             (now_iso(), issue_id),
         )
+        if cur.lastrowid is None:
+            raise RuntimeError("Failed to insert comment")
         return cur.lastrowid
 
 

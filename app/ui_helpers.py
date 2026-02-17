@@ -8,7 +8,10 @@ from app.config import COLOR_OPEN, COLOR_CLOSED
 
 
 def current_user() -> str:
-    return getpass.getuser()
+    try:
+        return getpass.getuser()
+    except Exception:
+        return "unknown"
 
 
 def format_datetime(iso_str: str) -> str:

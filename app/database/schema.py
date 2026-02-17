@@ -2,7 +2,10 @@
 schema.py - Schema creation and migration helpers
 Single responsibility: define and apply database schema.
 """
+import logging
 from app.database.connection import get_connection
+
+logger = logging.getLogger(__name__)
 
 
 SCHEMA_SQL = """
@@ -89,13 +92,17 @@ CREATE INDEX IF NOT EXISTS idx_milestones_due_date
 
 def initialize_schema() -> None:
     """Create tables and indexes if missing."""
-    with get_connection() as conn:
-        conn.executescript(SCHEMA_SQL)
-        # Add milestone_id column if missing (compatible with older SQLite)
-        columns = conn.execute("PRAGMA table_info(issues)").fetchall()
-        has_milestone = any(col[1] == "milestone_id" for col in columns)
-        if not has_milestone:
-            conn.execute(
-                "ALTER TABLE issues ADD COLUMN milestone_id INTEGER REFERENCES milestones(id) ON DELETE SET NULL"
-            )
-        conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_milestone_id ON issues(milestone_id)")
+    try:
+        with get_connection() as conn:
+            conn.executescript(SCHEMA_SQL)
+            # Add milestone_id column if missing (compatible with older SQLite)
+            columns = conn.execute("PRAGMA table_info(issues)").fetchall()
+            has_milestone = any(col[1] == "milestone_id" for col in columns)
+            if not has_milestone:
+                conn.execute(
+                    "ALTER TABLE issues ADD COLUMN milestone_id INTEGER REFERENCES milestones(id) ON DELETE SET NULL"
+                )
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_issues_milestone_id ON issues(milestone_id)")
+    except Exception as e:
+        logger.error("Failed to initialize database schema: %s", e)
+        raise

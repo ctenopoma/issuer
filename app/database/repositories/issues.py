@@ -6,14 +6,9 @@ from app.database.connection import get_connection
 from app.database.repositories import labels as label_repo
 from app.database.repositories.labels import normalize_labels
 from app.database.repositories.labels import ensure_labels
-from app.database.schema import initialize_schema
 from app.domain.filters import IssueFilter
 from app.domain.models import Issue
 from app.utils.time import now_iso
-
-
-# Ensure schema exists on import to keep old behavior
-initialize_schema()
 
 
 def _set_issue_labels(conn, issue_id: int, labels: list[str]) -> None:
@@ -111,6 +106,8 @@ def create_issue(issue: Issue, labels: list[str] | None = None) -> int:
             ),
         )
         iid = cur.lastrowid
+        if iid is None:
+            raise RuntimeError("Failed to insert issue")
         if labels is not None:
             _set_issue_labels(conn, iid, labels)
         return iid
