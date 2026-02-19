@@ -130,6 +130,7 @@ def main(page: ft.Page):
                 issue_id=state.selected_issue_id,
                 on_back=back_to_list,
                 on_deleted=handle_issue_deleted,
+                on_navigate_to_issue=handle_select_issue,
             )
         )
         page.update()

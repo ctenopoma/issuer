@@ -72,3 +72,47 @@ def linkify_file_paths(text: str) -> str:
         last = m.start() + len(path)
     parts.append(text[last:])
     return "".join(parts)
+
+
+def linkify_issues(text: str) -> str:
+    """Replace #123 style issue references with Markdown links.
+
+    Matches #123 and converts to [#123](issue://123).
+    Existing links are protected.
+    """
+    if not text:
+        return text
+
+    # Matches #123
+    # Lookbehind ensures it's not part of another word (e.g. Issue#123 is ok, but not inside a url)
+    # But for simplicity, we just look for word boundary or start of line.
+    issue_re = re.compile(r"(?<!\w)#(\d+)")
+
+    # Collect spans that are already inside markdown links.
+    protected: list[tuple[int, int]] = []
+    for m in _MD_LINK_RE.finditer(text):
+        protected.append((m.start(), m.end()))
+
+    def _in_protected(start: int, end: int) -> bool:
+        for ps, pe in protected:
+            if start >= ps and end <= pe:
+                return True
+        return False
+
+    parts: list[str] = []
+    last = 0
+
+    for m in issue_re.finditer(text):
+        if _in_protected(m.start(), m.end()):
+            continue
+
+        issue_id = m.group(1)
+        # Avoid linking if it looks like a color hex code (though #123 is valid hex, usually 3 or 6 chars)
+        # We assume #<digits> is an issue link.
+
+        parts.append(text[last : m.start()])
+        parts.append(f"[#{issue_id}](issue://{issue_id})")
+        last = m.end()
+
+    parts.append(text[last:])
+    return "".join(parts)

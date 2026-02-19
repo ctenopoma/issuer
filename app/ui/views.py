@@ -35,7 +35,7 @@ from app.ui_helpers import (
     parse_labels,
 )
 from app.utils.attachments import save_clipboard_image
-from app.utils.linkify import linkify_file_paths
+from app.utils.linkify import linkify_file_paths, linkify_issues
 
 
 def _parse_iso_date(value: str | None) -> date | None:
@@ -879,6 +879,7 @@ def build_detail_view(
     issue_id: int,
     on_back,
     on_deleted,
+    on_navigate_to_issue,
 ):
     issue = issue_service.get_issue(issue_id)
     if issue is None:
@@ -909,7 +910,13 @@ def build_detail_view(
         page.views.pop()
         page.views.append(
             build_detail_view(
-                page, state, user, issue_id, on_back=on_back, on_deleted=on_deleted
+                page,
+                state,
+                user,
+                issue_id,
+                on_back=on_back,
+                on_deleted=on_deleted,
+                on_navigate_to_issue=on_navigate_to_issue,
             )
         )
         page.update()
@@ -1395,6 +1402,14 @@ def build_detail_view(
     def _handle_link_tap(e):
         """Open file:/// links with OS default handler; others in browser."""
         url: str = e.data
+        if url.startswith("issue://"):
+            try:
+                target_id = int(url.replace("issue://", ""))
+                on_navigate_to_issue(target_id)
+            except ValueError:
+                pass
+            return
+
         if url.startswith("file:///") or url.startswith("file:"):
             # Convert file URL back to a local path.
             from urllib.parse import unquote, urlparse
@@ -1426,7 +1441,7 @@ def build_detail_view(
         content=ft.Column(
             controls=[
                 ft.Markdown(
-                    linkify_file_paths(issue["body"]) or "*本文なし*",
+                    linkify_issues(linkify_file_paths(issue["body"])) or "*本文なし*",
                     selectable=True,
                     extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
                     on_tap_link=_handle_link_tap,
@@ -1506,7 +1521,7 @@ def build_detail_view(
                     ),
                     ft.Container(
                         content=ft.Markdown(
-                            linkify_file_paths(c["body"]),
+                            linkify_issues(linkify_file_paths(c["body"])),
                             selectable=True,
                             extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
                             on_tap_link=_handle_link_tap,
