@@ -26,6 +26,7 @@ from app.utils.lock import (
     force_acquire_lock,
     get_zombie_hours,
     read_lock,
+    update_lock_timestamp,
 )
 
 logger = logging.getLogger(__name__)
@@ -320,6 +321,29 @@ def main(page: ft.Page):
 
     _start_mouse_back_hook()
 
+    _start_mouse_back_hook()
+
+    # ------------------------------------------------------------------
+    # ロックファイル ハートビート (定期更新)
+    # ------------------------------------------------------------------
+    def _start_heartbeat():
+        def _heartbeat_loop():
+            import time
+
+            while True:
+                time.sleep(60)
+                # 編集モードでなくなったら停止
+                if not state or state.mode != "edit":
+                    break
+                try:
+                    update_lock_timestamp()
+                    logger.debug("Lock timestamp updated")
+                except Exception:
+                    logger.warning("Failed to update lock timestamp", exc_info=True)
+
+        t = threading.Thread(target=_heartbeat_loop, daemon=True)
+        t.start()
+
     async def on_window_event(e: ft.WindowEvent):
         if e.type == ft.WindowEventType.CLOSE:
             logger.debug(f"Window close event, mode={state.mode}")
@@ -349,6 +373,7 @@ def main(page: ft.Page):
             force_acquire_lock()
             state.mode = "edit"
             state.locked_by = None
+            _start_heartbeat()
             dialog.open = False
             page.update()
             refresh_list()
@@ -392,6 +417,8 @@ def main(page: ft.Page):
         show_zombie_dialog()
     else:
         state.mode = "edit" if lock_mode == "edit" else "readonly"
+        if state.mode == "edit":
+            _start_heartbeat()
         refresh_list()
 
     page.update()

@@ -2,6 +2,7 @@
 lock.py - 排他制御（ロックファイル管理）
 Issue Manager v1.0
 """
+
 import json
 import os
 import logging
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # ロックファイル I/O
 # ---------------------------------------------------------------------------
+
 
 def read_lock() -> dict | None:
     """ロックファイルの内容を読み取る。存在しない・壊れている場合は None。"""
@@ -33,12 +35,32 @@ def write_lock() -> None:
     data = {
         "user": getpass.getuser(),
         "locked_at": datetime.now().isoformat(timespec="seconds"),
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
     }
     try:
         with open(LOCK_PATH, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
     except OSError as e:
         logger.warning("Failed to write lock file: %s", e)
+
+
+def update_lock_timestamp() -> None:
+    """ロックファイルのタイムスタンプ(updated_at)を更新する（ハートビート）。"""
+    lock_data = read_lock()
+    if not lock_data:
+        return
+
+    # 自分が作成したロックか確認する（念のため）
+    if lock_data.get("user") != getpass.getuser():
+        return
+
+    lock_data["updated_at"] = datetime.now().isoformat(timespec="seconds")
+
+    try:
+        with open(LOCK_PATH, "w", encoding="utf-8") as f:
+            json.dump(lock_data, f, ensure_ascii=False, indent=2)
+    except OSError as e:
+        logger.warning("Failed to update lock file timestamp: %s", e)
 
 
 def release_lock() -> None:
@@ -57,23 +79,27 @@ def release_lock() -> None:
 # ゾンビロック判定
 # ---------------------------------------------------------------------------
 
+
 def is_zombie_lock(lock_data: dict) -> bool:
     """
-    ロックが ZOMBIE_THRESHOLD_HOURS 以上前に作成されていれば True。
-    locked_at のパースに失敗した場合も True（壊れたロックとして扱う）。
+    ロックが ZOMBIE_THRESHOLD_HOURS 以上前に作成・更新されていれば True。
+    locked_at/updated_at のパースに失敗した場合も True（壊れたロックとして扱う）。
     """
     try:
-        locked_at = datetime.fromisoformat(lock_data["locked_at"])
-        return datetime.now() - locked_at > timedelta(hours=ZOMBIE_THRESHOLD_HOURS)
+        # updated_at があればそれを優先、なければ locked_at (古いバージョンとの互換性)
+        timestamp_str = lock_data.get("updated_at") or lock_data["locked_at"]
+        last_active_at = datetime.fromisoformat(timestamp_str)
+        return datetime.now() - last_active_at > timedelta(hours=ZOMBIE_THRESHOLD_HOURS)
     except (KeyError, ValueError):
         return True
 
 
 def get_zombie_hours(lock_data: dict) -> float:
-    """ロックが何時間前に取得されたかを返す（ダイアログ表示用）。"""
+    """ロックが何時間前に取得(または更新)されたかを返す（ダイアログ表示用）。"""
     try:
-        locked_at = datetime.fromisoformat(lock_data["locked_at"])
-        delta = datetime.now() - locked_at
+        timestamp_str = lock_data.get("updated_at") or lock_data["locked_at"]
+        last_active_at = datetime.fromisoformat(timestamp_str)
+        delta = datetime.now() - last_active_at
         return round(delta.total_seconds() / 3600, 1)
     except (KeyError, ValueError):
         return 0.0
