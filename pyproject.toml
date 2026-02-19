@@ -7,5 +7,6 @@ requires-python = ">=3.11"
 dependencies = [
     "flet>=0.24.0",
     "pillow>=10.4.0",
+    "pywin32>=311",
 ]
 

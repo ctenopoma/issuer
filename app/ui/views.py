@@ -36,6 +36,7 @@ from app.ui_helpers import (
 )
 from app.utils.attachments import save_clipboard_image
 from app.utils.linkify import linkify_file_paths, linkify_issues
+from app.utils.outlook import create_issue_email_draft
 
 
 def _parse_iso_date(value: str | None) -> date | None:
@@ -1296,7 +1297,30 @@ def build_detail_view(
                 ),
             ]
         )
-    header_actions.extend([toggle_button, status_badge])
+
+    def on_share_click(e):
+        try:
+            create_issue_email_draft(issue)
+        except Exception as ex:
+            err_dlg = ft.AlertDialog(
+                title=ft.Text("メール作成エラー"),
+                content=ft.Text(f"Outlook の起動に失敗しました。\n\n{str(ex)}"),
+            )
+            page.overlay.append(err_dlg)
+            err_dlg.open = True
+            page.update()
+
+    header_actions.extend(
+        [
+            ft.IconButton(
+                icon=ft.Icons.SHARE,
+                tooltip="Outlookで共有",
+                on_click=on_share_click,
+            ),
+            toggle_button,
+            status_badge,
+        ]
+    )
 
     header = ft.Row(
         controls=[
