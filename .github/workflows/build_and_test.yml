@@ -95,6 +95,7 @@ jobs:
         if ($localProcess) {
             Write-Host "PASS: Relaunched process is running (PID: $($localProcess.Id))"
             Stop-Process -Name "Issuer" -Force
+            Start-Sleep -Seconds 2
         } else {
             Write-Error "FAIL: Relaunched process is not running."
             exit 1
@@ -186,5 +187,6 @@ jobs:
 
         # クリーンアップ
         Stop-Process -Name "Issuer" -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
         Remove-Item Env:ISSUER_FORCE_RELAUNCH
-        if (Test-Path $localDir) { Remove-Item $localDir -Recurse -Force }
+        if (Test-Path $localDir) { Remove-Item $localDir -Recurse -Force -ErrorAction SilentlyContinue }
