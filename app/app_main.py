@@ -16,8 +16,8 @@ import flet as ft
 
 from app.database.schema import initialize_schema
 from app.config import APP_TITLE, COLOR_BG, COLOR_PRIMARY
-from app.ui_helpers import current_user, parse_labels
-from app.ui_state import AppState
+from app.ui.helpers import current_user, parse_labels
+from app.ui.state import AppState
 from app.ui import views, actions
 from app.services import filter_service, issue_service
 from app.utils.lock import (

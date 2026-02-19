@@ -2,13 +2,20 @@
 actions.py - UI-side actions and dialogs
 Single responsibility: handle modal flows that mutate issues.
 """
+
 from datetime import date
 
 import flet as ft
 
-from app.config import COLOR_BORDER, COLOR_PRIMARY, BORDER_RADIUS_BTN, BORDER_RADIUS_CARD, COLOR_DANGER
+from app.config import (
+    COLOR_BORDER,
+    COLOR_PRIMARY,
+    BORDER_RADIUS_BTN,
+    BORDER_RADIUS_CARD,
+    COLOR_DANGER,
+)
 from app.services import issue_service, milestone_service
-from app.ui_helpers import parse_labels
+from app.ui.helpers import parse_labels
 from app.utils.attachments import save_clipboard_image
 
 
@@ -17,7 +24,9 @@ def _set_due_date_value(e: ft.ControlEvent, field: ft.TextField, page: ft.Page) 
     val = getattr(e.control, "value", "")
     if val:
         try:
-            field.value = val.strftime("%Y-%m-%d") if hasattr(val, "strftime") else str(val)
+            field.value = (
+                val.strftime("%Y-%m-%d") if hasattr(val, "strftime") else str(val)
+            )
         except Exception:
             field.value = str(val)
     else:
@@ -35,7 +44,9 @@ def show_new_issue_dialog(page: ft.Page, state, user: str, on_created):
     """Open a dialog to create a new issue and refresh the list on success."""
     milestones = milestone_service.list_all()
 
-    def insert_clipboard_image(target_field, on_fail_msg="クリップボードに画像がありません"):
+    def insert_clipboard_image(
+        target_field, on_fail_msg="クリップボードに画像がありません"
+    ):
         path = save_clipboard_image()
         if not path:
             page.snack_bar = ft.SnackBar(ft.Text(on_fail_msg), bgcolor=COLOR_DANGER)
@@ -86,11 +97,11 @@ def show_new_issue_dialog(page: ft.Page, state, user: str, on_created):
         focused_border_color=COLOR_PRIMARY,
         border_radius=BORDER_RADIUS_BTN,
         suffix=ft.IconButton(
-                icon=ft.Icons.IMAGE,
-                icon_color=COLOR_PRIMARY,
-                tooltip="クリップボード画像を貼り付け",
-                on_click=lambda _e: insert_clipboard_image(body_field),
-            ),
+            icon=ft.Icons.IMAGE,
+            icon_color=COLOR_PRIMARY,
+            tooltip="クリップボード画像を貼り付け",
+            on_click=lambda _e: insert_clipboard_image(body_field),
+        ),
     )
     error_text = ft.Text("", color=COLOR_DANGER, size=12)
 
@@ -270,7 +281,9 @@ def show_new_milestone_dialog(page: ft.Page, on_created):
 def show_manage_milestones(page: ft.Page, on_changed):
     """Open a dialog to edit/delete milestones and refresh caller on change."""
 
-    list_column = ft.Column(spacing=10, tight=True, scroll=ft.ScrollMode.AUTO, height=380)
+    list_column = ft.Column(
+        spacing=10, tight=True, scroll=ft.ScrollMode.AUTO, height=380
+    )
 
     def refresh_list():
         milestones = milestone_service.list_all()
@@ -319,7 +332,9 @@ def show_manage_milestones(page: ft.Page, on_changed):
                 start_date_field.suffix = ft.IconButton(
                     icon=ft.Icons.CALENDAR_MONTH,
                     tooltip="日付を選択",
-                    on_click=lambda _e, dp=start_date_picker: _open_date_picker(dp, page),
+                    on_click=lambda _e, dp=start_date_picker: _open_date_picker(
+                        dp, page
+                    ),
                 )
                 due_date_field = ft.TextField(
                     label="期限",
@@ -413,7 +428,9 @@ def show_manage_milestones(page: ft.Page, on_changed):
                 edit_dlg.open = True
                 page.update()
 
-            def confirm_delete(_e=None, milestone_id=m["id"], milestone_title=m["title"]):
+            def confirm_delete(
+                _e=None, milestone_id=m["id"], milestone_title=m["title"]
+            ):
                 def do_delete(_ev=None):
                     milestone_service.delete(milestone_id)
                     delete_dlg.open = False
@@ -461,7 +478,9 @@ def show_manage_milestones(page: ft.Page, on_changed):
                         controls=[
                             ft.Column(
                                 controls=[
-                                    ft.Text(m["title"], weight=ft.FontWeight.BOLD, size=15),
+                                    ft.Text(
+                                        m["title"], weight=ft.FontWeight.BOLD, size=15
+                                    ),
                                     ft.Text(
                                         f"開始: {m['start_date'] or '未設定'}  ・  期限: {m['due_date'] or '未設定'}  ・  ステータス: {m['status']}  ・  進捗 {pct}% ({closed}/{total})",
                                         size=12,
@@ -493,7 +512,9 @@ def show_manage_milestones(page: ft.Page, on_changed):
                 )
             )
 
-        list_column.controls = rows or [ft.Text("マイルストーンがありません", color=COLOR_BORDER)]
+        list_column.controls = rows or [
+            ft.Text("マイルストーンがありません", color=COLOR_BORDER)
+        ]
         page.update()
 
     refresh_list()

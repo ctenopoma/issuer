@@ -29,7 +29,7 @@ from app.config import (
 )
 from app.domain.reactions import REACTION_OPTIONS
 from app.services import issue_service, filter_service, milestone_service
-from app.ui_helpers import (
+from app.ui.helpers import (
     format_datetime,
     status_color,
     parse_labels,
