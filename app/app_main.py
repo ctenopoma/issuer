@@ -5,9 +5,12 @@ Issue Manager v1.0
 
 import atexit
 import base64
+import ctypes
+import ctypes.wintypes
 import logging
 import signal
 import sys
+import threading
 from io import BytesIO
 from pathlib import Path
 
@@ -234,7 +237,7 @@ def main(page: ft.Page):
         if page.route == "/":
             refresh_list()
 
-    def view_pop(_e: ft.ViewPopEvent):
+    def view_pop(_e: ft.ViewPopEvent = None):
         if len(page.views) > 1:
             page.views.pop()
         state.selected_issue_id = None
@@ -243,9 +246,88 @@ def main(page: ft.Page):
     page.on_route_change = route_change
     page.on_view_pop = view_pop
 
+    # ------------------------------------------------------------------
+    # マウスの「戻る」ボタン (XButton1) で前の画面に戻る
+    # ------------------------------------------------------------------
+    _mouse_hook_id = None
+    _mouse_hook_thread_id = None
+
+    def _start_mouse_back_hook():
+        """Windows 低レベルマウスフックで XButton1 を検出する。"""
+        nonlocal _mouse_hook_id, _mouse_hook_thread_id
+
+        WH_MOUSE_LL = 14
+        WM_XBUTTONDOWN = 0x020B
+        XBUTTON1 = 0x0001
+
+        user32 = ctypes.windll.user32
+        kernel32 = ctypes.windll.kernel32
+
+        HOOKPROC = ctypes.CFUNCTYPE(
+            ctypes.c_long,
+            ctypes.c_int,
+            ctypes.wintypes.WPARAM,
+            ctypes.wintypes.LPARAM,
+        )
+
+        class MSLLHOOKSTRUCT(ctypes.Structure):
+            _fields_ = [
+                ("pt", ctypes.wintypes.POINT),
+                ("mouseData", ctypes.wintypes.DWORD),
+                ("flags", ctypes.wintypes.DWORD),
+                ("time", ctypes.wintypes.DWORD),
+                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+            ]
+
+        def low_level_mouse_proc(nCode, wParam, lParam):
+            if nCode >= 0 and wParam == WM_XBUTTONDOWN:
+                info = ctypes.cast(lParam, ctypes.POINTER(MSLLHOOKSTRUCT)).contents
+                hi_word = (info.mouseData >> 16) & 0xFFFF
+                if hi_word == XBUTTON1:
+                    try:
+                        page.run_thread(view_pop)
+                    except Exception:
+                        logger.debug(
+                            "mouse back hook: failed to trigger view_pop", exc_info=True
+                        )
+            return user32.CallNextHookEx(_mouse_hook_id, nCode, wParam, lParam)
+
+        # prevent garbage collection of callback
+        _hook_proc_ref = HOOKPROC(low_level_mouse_proc)
+
+        def _run_hook():
+            nonlocal _mouse_hook_id, _mouse_hook_thread_id
+            _mouse_hook_thread_id = kernel32.GetCurrentThreadId()
+            _mouse_hook_id = user32.SetWindowsHookExW(
+                WH_MOUSE_LL, _hook_proc_ref, None, 0
+            )
+            if not _mouse_hook_id:
+                logger.warning("Failed to install mouse back button hook")
+                return
+            logger.info("Mouse back button hook installed")
+
+            msg = ctypes.wintypes.MSG()
+            while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
+                user32.TranslateMessage(ctypes.byref(msg))
+                user32.DispatchMessageW(ctypes.byref(msg))
+
+        t = threading.Thread(target=_run_hook, daemon=True)
+        t.start()
+
+    def _stop_mouse_back_hook():
+        """フックを解除してメッセージループを停止する。"""
+        user32 = ctypes.windll.user32
+        if _mouse_hook_id:
+            user32.UnhookWindowsHookEx(_mouse_hook_id)
+        if _mouse_hook_thread_id:
+            user32.PostThreadMessageW(_mouse_hook_thread_id, 0x0012, 0, 0)  # WM_QUIT
+
+    _start_mouse_back_hook()
+
     async def on_window_event(e: ft.WindowEvent):
         if e.type == ft.WindowEventType.CLOSE:
             logger.debug(f"Window close event, mode={state.mode}")
+            _stop_mouse_back_hook()
             try:
                 if state.mode == "edit":
                     release_lock()

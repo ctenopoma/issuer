@@ -85,6 +85,12 @@ def show_new_issue_dialog(page: ft.Page, state, user: str, on_created):
         border_color=COLOR_BORDER,
         focused_border_color=COLOR_PRIMARY,
         border_radius=BORDER_RADIUS_BTN,
+        suffix=ft.IconButton(
+                icon=ft.Icons.IMAGE,
+                icon_color=COLOR_PRIMARY,
+                tooltip="クリップボード画像を貼り付け",
+                on_click=lambda _e: insert_clipboard_image(body_field),
+            ),
     )
     error_text = ft.Text("", color=COLOR_DANGER, size=12)
 
@@ -127,16 +133,6 @@ def show_new_issue_dialog(page: ft.Page, state, user: str, on_created):
                     milestone_field,
                     labels_field,
                     body_field,
-                    ft.Row(
-                        controls=[
-                            ft.IconButton(
-                                icon=ft.Icons.IMAGE,
-                                tooltip="クリップボード画像を本文に貼り付け",
-                                on_click=on_paste_image_into_body,
-                            ),
-                        ],
-                        alignment=ft.MainAxisAlignment.START,
-                    ),
                     error_text,
                 ],
                 spacing=16,

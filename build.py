@@ -14,10 +14,13 @@ def build():
         "app.ico",
         "--add-data",
         "app.ico;.",
-        "--noconsole",
         "--clean",
         "--onefile",  # Generate a single executable
     ]
+
+    # CI環境（GitHub Actions等）でない場合のみ、--noconsole を追加する
+    if not os.environ.get("CI"):
+        args.append("--noconsole")
 
     # Run PyInstaller
     print(f"Running: {' '.join(args)}")

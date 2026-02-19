@@ -2,6 +2,9 @@
 issues.py - Issue repository
 Single responsibility: persistence for issues and label relations.
 """
+
+import re
+
 from app.database.connection import get_connection
 from app.database.repositories import labels as label_repo
 from app.database.repositories.labels import normalize_labels
@@ -25,33 +28,44 @@ def _set_issue_labels(conn, issue_id: int, labels: list[str]) -> None:
 
 
 def list_issues(filter: IssueFilter) -> list[Issue]:
-    clauses = ["(title LIKE ? OR body LIKE ?)"]
-    params: list = [f"%{filter.keyword}%", f"%{filter.keyword}%"]
+    clauses: list[str] = []
+    params: list = []
+
+    # Split keyword by whitespace (half-width and full-width) for AND partial matching
+    keywords = [w for w in re.split(r"[\s\u3000]+", filter.keyword) if w]
+    for kw in keywords:
+        clauses.append("(title LIKE ? OR body LIKE ?)")
+        params.extend([f"%{kw}%", f"%{kw}%"])
 
     if filter.status and filter.status != "ALL":
         clauses.append("status = ?")
         params.append(filter.status)
 
     if filter.assignee:
-        clauses.append("assignee = ?")
-        params.append(filter.assignee)
+        clauses.append("assignee LIKE ?")
+        params.append(f"%{filter.assignee}%")
 
     if filter.milestone_id is not None:
         clauses.append("milestone_id = ?")
         params.append(filter.milestone_id)
 
     if filter.tags:
-        placeholders = ",".join(["?"] * len(filter.tags))
+        tag_like_parts = []
+        for tag in filter.tags:
+            tag_like_parts.append("l.name LIKE ?")
+            params.append(f"%{tag}%")
+        tag_where = " OR ".join(tag_like_parts)
         clauses.append(
-            f"id IN (SELECT issue_id FROM issue_labels il JOIN labels l ON l.id = il.label_id WHERE l.name IN ({placeholders}))"
+            f"id IN (SELECT issue_id FROM issue_labels il JOIN labels l ON l.id = il.label_id WHERE {tag_where})"
         )
-        params.extend(filter.tags)
 
-    where_clause = " AND ".join(clauses)
+    where_clause = (" AND ".join(clauses)) if clauses else "1=1"
     order_clause = "ORDER BY created_at DESC"
 
     with get_connection() as conn:
-        rows = conn.execute(f"SELECT * FROM issues WHERE {where_clause} {order_clause}", params).fetchall()
+        rows = conn.execute(
+            f"SELECT * FROM issues WHERE {where_clause} {order_clause}", params
+        ).fetchall()
         result: list[Issue] = []
         for r in rows:
             result.append(
@@ -113,7 +127,14 @@ def create_issue(issue: Issue, labels: list[str] | None = None) -> int:
         return iid
 
 
-def update_issue(issue_id: int, title: str, body: str, assignee: str | None = "", labels: list[str] | None = None, milestone_id: int | None = None) -> None:
+def update_issue(
+    issue_id: int,
+    title: str,
+    body: str,
+    assignee: str | None = "",
+    labels: list[str] | None = None,
+    milestone_id: int | None = None,
+) -> None:
     labels = normalize_labels(labels)
     with get_connection() as conn:
         conn.execute(
@@ -126,7 +147,9 @@ def update_issue(issue_id: int, title: str, body: str, assignee: str | None = ""
 
 def toggle_status(issue_id: int) -> str:
     with get_connection() as conn:
-        row = conn.execute("SELECT status FROM issues WHERE id = ?", (issue_id,)).fetchone()
+        row = conn.execute(
+            "SELECT status FROM issues WHERE id = ?", (issue_id,)
+        ).fetchone()
         if row is None:
             raise ValueError(f"Issue {issue_id} not found")
         new_status = "CLOSED" if row["status"] == "OPEN" else "OPEN"
@@ -213,4 +236,6 @@ def toggle_reaction(issue_id: int, reaction: str, current_user: str) -> None:
                 "INSERT INTO issue_reactions (issue_id, reacted_by, reaction, created_at) VALUES (?, ?, ?, ?)",
                 (issue_id, current_user, reaction, now_iso()),
             )
-        conn.execute("UPDATE issues SET updated_at = ? WHERE id = ?", (now_iso(), issue_id))
+        conn.execute(
+            "UPDATE issues SET updated_at = ? WHERE id = ?", (now_iso(), issue_id)
+        )

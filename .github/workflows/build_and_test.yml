@@ -1,0 +1,62 @@
+name: Windows App Build and Test
+
+# mainブランチにpushされた時、またはPull Requestが作られた時に自動実行
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    # ここがポイント！ Windows 10(2019) と Windows 11(2022) の両方で同時にテストを走らせます
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-2019, windows-2022]
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11' # お使いのPythonバージョンに合わせて変更してください
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install flet pyinstaller
+        # もし requirements.txt がある場合は以下のコメントアウトを外してください
+        # pip install -r requirements.txt
+
+    - name: Build Executable
+      run: python build.py
+
+    - name: Run and Test Executable
+      shell: powershell
+      run: |
+        $exePath = ".\dist\Issuer.exe"
+        Write-Host "Starting $exePath..."
+
+        # exeを起動して、プロセス情報を取得（CI環境なのでコンソール出力エラーも拾えます）
+        $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
+
+        Write-Host "Waiting for 5 seconds to check for crashes..."
+        Start-Sleep -Seconds 5
+
+        # プロセスがすでに終了してしまっているかチェック
+        if ($process.HasExited) {
+            if ($process.ExitCode -ne 0) {
+                Write-Error "❌ テスト失敗: アプリが起動直後にクラッシュしました！ (Exit Code: $($process.ExitCode))"
+                exit 1
+            } else {
+                Write-Error "❌ テスト失敗: エラーは出ていませんが、アプリがすぐに閉じてしまいました。"
+                exit 1
+            }
+        } else {
+            Write-Host "✅ テスト成功: アプリは正常に起動し、待機しています。"
+            # テスト完了なので、起動したアプリのプロセスを強制終了する
+            Stop-Process -Id $process.Id -Force
+        }

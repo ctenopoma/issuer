@@ -2,6 +2,7 @@
 views.py - UI view builders (list/detail)
 Single responsibility: build flet Views using provided callbacks/state.
 """
+
 import asyncio
 from datetime import date
 
@@ -102,6 +103,8 @@ def build_issue_list_view(
     on_clear_filter,
 ):
     search_task: asyncio.Task | None = None
+
+    # --- Initial data loading for first render ---
     issue_filter = filter_service.build_filter(
         keyword=state.keyword,
         status=state.current_tab,
@@ -119,21 +122,18 @@ def build_issue_list_view(
     active_milestone_progress: tuple[int, int, int] | None = None
     if active_milestone:
         try:
-            active_milestone_progress = milestone_service.progress(active_milestone["id"])
+            active_milestone_progress = milestone_service.progress(
+                active_milestone["id"]
+            )
         except Exception:
             active_milestone_progress = None
     labels_map = issue_service.get_labels_map([issue["id"] for issue in issues])
 
-    async def _debounced_search(term_snapshot: str):
-        # Debounce to avoid rebuilding the whole view on every keystroke
-        try:
-            await asyncio.sleep(0.35)
-        except asyncio.CancelledError:
-            return
-        if term_snapshot == state.keyword:
-            save_filter_and_refresh()
+    # Reference to the issue list column for in-place updates during search
+    list_column_ref = ft.Ref[ft.Column]()
 
     def save_filter_and_refresh():
+        """Full view rebuild — used by tab/assignee/tag filters."""
         filt = filter_service.build_filter(
             keyword=state.keyword,
             status=state.current_tab,
@@ -144,11 +144,64 @@ def build_issue_list_view(
         filter_service.save_last(filt)
         on_save_filter()
 
+    def _update_list_content_inplace():
+        """Update only the issue list controls without rebuilding the whole view."""
+        nonlocal labels_map
+        filt = filter_service.build_filter(
+            keyword=state.keyword,
+            status=state.current_tab,
+            assignee=state.filter_assignee or None,
+            tags=parse_labels(state.filter_tags_text),
+            milestone_id=state.filter_milestone_id,
+        )
+        filter_service.save_last(filt)
+        new_issues = issue_service.list_issues(filt)[:DEFAULT_PAGE_SIZE]
+        labels_map = issue_service.get_labels_map([i["id"] for i in new_issues])
+        cards = [build_issue_card(issue) for issue in new_issues]
+
+        col = list_column_ref.current
+        if col is None:
+            # Fallback: full refresh if ref is not available
+            on_save_filter()
+            return
+        if not cards:
+            col.controls = [
+                ft.Container(
+                    content=ft.Column(
+                        [
+                            ft.Icon(ft.Icons.INBOX, size=64, color="#d0d7de"),
+                            ft.Text(
+                                "そのステータスの Issue はありません",
+                                color=COLOR_TEXT_MUTED,
+                                size=16,
+                            ),
+                        ],
+                        horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                    ),
+                    alignment=ft.Alignment.CENTER,
+                    padding=60,
+                    expand=True,
+                )
+            ]
+        else:
+            col.controls = cards
+        col.update()
+
+    async def _debounced_search(term_snapshot: str):
+        # Debounce to avoid rebuilding the list on every keystroke
+        try:
+            await asyncio.sleep(0.5)
+        except asyncio.CancelledError:
+            return
+        if term_snapshot == state.keyword:
+            _update_list_content_inplace()
+
     def on_search(e):
         nonlocal search_task
         state.keyword = e.control.value or ""
         if search_task and not search_task.done():
             search_task.cancel()
+
         # Wrap to ensure we always pass a coroutine function (no pre-created coroutine objects)
         async def runner(term: str):
             await _debounced_search(term)
@@ -156,13 +209,40 @@ def build_issue_list_view(
         # Use Flet's event loop runner to ensure the task runs even in sync apps
         search_task = page.run_task(runner, state.keyword)
 
+    assignee_task: asyncio.Task | None = None
+    tags_task: asyncio.Task | None = None
+
     def on_assignee_change(e):
+        nonlocal assignee_task
         state.filter_assignee = e.control.value.strip()
-        save_filter_and_refresh()
+        if assignee_task and not assignee_task.done():
+            assignee_task.cancel()
+
+        async def runner(snapshot: str):
+            try:
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                return
+            if snapshot == state.filter_assignee:
+                _update_list_content_inplace()
+
+        assignee_task = page.run_task(runner, state.filter_assignee)
 
     def on_tags_change(e):
+        nonlocal tags_task
         state.filter_tags_text = e.control.value
-        save_filter_and_refresh()
+        if tags_task and not tags_task.done():
+            tags_task.cancel()
+
+        async def runner(snapshot: str):
+            try:
+                await asyncio.sleep(0.5)
+            except asyncio.CancelledError:
+                return
+            if snapshot == state.filter_tags_text:
+                _update_list_content_inplace()
+
+        tags_task = page.run_task(runner, state.filter_tags_text)
 
     def on_tab_click(tab_key):
         state.current_tab = tab_key
@@ -253,7 +333,9 @@ def build_issue_list_view(
             on_select_issue(iid)
 
         accent_color = COLOR_OPEN if issue["status"] == "OPEN" else COLOR_CLOSED
-        status_icon = ft.Icons.ADJUST if issue["status"] == "OPEN" else ft.Icons.CHECK_CIRCLE
+        status_icon = (
+            ft.Icons.ADJUST if issue["status"] == "OPEN" else ft.Icons.CHECK_CIRCLE
+        )
 
         meta_row = [
             ft.Text(f"#{issue['id']}", size=12, color=COLOR_TEXT_MUTED),
@@ -354,16 +436,14 @@ def build_issue_list_view(
     actions_row = ft.Row(
         controls=[
             ft.FilledButton(
-                        "新規作成",
-                        icon=ft.Icons.ADD,
-                        style=ft.ButtonStyle(
-                            bgcolor=COLOR_OPEN,
-                            color="white",
-                            shape=ft.RoundedRectangleBorder(
-                                radius=BORDER_RADIUS_BTN
-                            ),
-                        ),
-                        on_click=lambda e: on_new_issue(),
+                "新規作成",
+                icon=ft.Icons.ADD,
+                style=ft.ButtonStyle(
+                    bgcolor=COLOR_OPEN,
+                    color="white",
+                    shape=ft.RoundedRectangleBorder(radius=BORDER_RADIUS_BTN),
+                ),
+                on_click=lambda e: on_new_issue(),
             ),
             *(
                 [
@@ -382,7 +462,6 @@ def build_issue_list_view(
                         icon=ft.Icons.FLAG,
                         on_click=lambda e: on_new_milestone(),
                     ),
-                    
                 ]
                 if state.mode == "edit"
                 else []
@@ -397,7 +476,6 @@ def build_issue_list_view(
                 icon=ft.Icons.DOWNLOAD,
                 on_click=lambda e: on_load_preset(),
             ),
-
             ft.TextButton(
                 "クリア",
                 icon=ft.Icons.CLEAR,
@@ -478,29 +556,34 @@ def build_issue_list_view(
         )
 
     if not issue_cards:
-        list_content = ft.Container(
-            content=ft.Column(
-                [
-                    ft.Icon(ft.Icons.INBOX, size=64, color="#d0d7de"),
-                    ft.Text(
-                        "そのステータスの Issue はありません",
-                        color=COLOR_TEXT_MUTED,
-                        size=16,
-                    ),
-                ],
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            alignment=ft.Alignment.CENTER,
-            padding=60,
-            expand=True,
-        )
+        initial_controls = [
+            ft.Container(
+                content=ft.Column(
+                    [
+                        ft.Icon(ft.Icons.INBOX, size=64, color="#d0d7de"),
+                        ft.Text(
+                            "そのステータスの Issue はありません",
+                            color=COLOR_TEXT_MUTED,
+                            size=16,
+                        ),
+                    ],
+                    horizontal_alignment=ft.CrossAxisAlignment.CENTER,
+                ),
+                alignment=ft.Alignment.CENTER,
+                padding=60,
+                expand=True,
+            )
+        ]
     else:
-        list_content = ft.Column(
-            controls=issue_cards,
-            scroll=ft.ScrollMode.AUTO,
-            expand=True,
-            spacing=0,
-        )
+        initial_controls = issue_cards
+
+    list_content = ft.Column(
+        ref=list_column_ref,
+        controls=initial_controls,
+        scroll=ft.ScrollMode.AUTO,
+        expand=True,
+        spacing=0,
+    )
 
     return ft.View(
         route="/",
@@ -572,8 +655,12 @@ def build_milestone_progress_view(
                                         weight=ft.FontWeight.W_600,
                                         color="white",
                                     ),
-                                    bgcolor=status_color_map.get(status, COLOR_TEXT_MUTED),
-                                    padding=ft.Padding.symmetric(horizontal=10, vertical=4),
+                                    bgcolor=status_color_map.get(
+                                        status, COLOR_TEXT_MUTED
+                                    ),
+                                    padding=ft.Padding.symmetric(
+                                        horizontal=10, vertical=4
+                                    ),
                                     border_radius=12,
                                 ),
                             ],
@@ -613,11 +700,17 @@ def build_milestone_progress_view(
                             controls=[
                                 ft.Text(f"進捗 {pct}%", size=12, color=COLOR_TEXT_MAIN),
                                 ft.Container(expand=True),
-                                ft.Text(f"Open {open_cnt}", size=12, color=COLOR_TEXT_MUTED),
+                                ft.Text(
+                                    f"Open {open_cnt}", size=12, color=COLOR_TEXT_MUTED
+                                ),
                                 ft.Text("/", size=12, color=COLOR_TEXT_MUTED),
-                                ft.Text(f"Closed {closed}", size=12, color=COLOR_TEXT_MUTED),
+                                ft.Text(
+                                    f"Closed {closed}", size=12, color=COLOR_TEXT_MUTED
+                                ),
                                 ft.Text("・", size=12, color=COLOR_TEXT_MUTED),
-                                ft.Text(f"Total {total}", size=12, color=COLOR_TEXT_MUTED),
+                                ft.Text(
+                                    f"Total {total}", size=12, color=COLOR_TEXT_MUTED
+                                ),
                             ],
                         ),
                         ft.Row(
@@ -625,8 +718,12 @@ def build_milestone_progress_view(
                                 ft.FilledButton(
                                     "このマイルストーンで一覧表示",
                                     icon=ft.Icons.FILTER_LIST,
-                                    style=ft.ButtonStyle(bgcolor=COLOR_PRIMARY, color="white"),
-                                    on_click=lambda _e, mid=m["id"]: on_select_milestone(mid),
+                                    style=ft.ButtonStyle(
+                                        bgcolor=COLOR_PRIMARY, color="white"
+                                    ),
+                                    on_click=lambda _e, mid=m["id"]: (
+                                        on_select_milestone(mid)
+                                    ),
                                 ),
                             ],
                             alignment=ft.MainAxisAlignment.START,
@@ -671,7 +768,11 @@ def build_milestone_progress_view(
                 content=ft.Column(
                     controls=[
                         ft.Text("アクティブ", size=12, color=COLOR_TEXT_MUTED),
-                        ft.Text(str(summary_counts.get("active", 0)), size=20, weight=ft.FontWeight.BOLD),
+                        ft.Text(
+                            str(summary_counts.get("active", 0)),
+                            size=20,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                     ],
                     spacing=2,
                 ),
@@ -685,7 +786,11 @@ def build_milestone_progress_view(
                 content=ft.Column(
                     controls=[
                         ft.Text("予定", size=12, color=COLOR_TEXT_MUTED),
-                        ft.Text(str(summary_counts.get("planned", 0)), size=20, weight=ft.FontWeight.BOLD),
+                        ft.Text(
+                            str(summary_counts.get("planned", 0)),
+                            size=20,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                     ],
                     spacing=2,
                 ),
@@ -699,7 +804,11 @@ def build_milestone_progress_view(
                 content=ft.Column(
                     controls=[
                         ft.Text("完了", size=12, color=COLOR_TEXT_MUTED),
-                        ft.Text(str(summary_counts.get("closed", 0)), size=20, weight=ft.FontWeight.BOLD),
+                        ft.Text(
+                            str(summary_counts.get("closed", 0)),
+                            size=20,
+                            weight=ft.FontWeight.BOLD,
+                        ),
                     ],
                     spacing=2,
                 ),
@@ -782,7 +891,11 @@ def build_detail_view(
     milestone_stats: tuple[int, int, int] | None = None
     if getattr(issue, "milestone_id", None):
         milestone = next(
-            (m for m in milestone_service.list_all() if m["id"] == issue["milestone_id"]),
+            (
+                m
+                for m in milestone_service.list_all()
+                if m["id"] == issue["milestone_id"]
+            ),
             None,
         )
         try:
@@ -816,7 +929,9 @@ def build_detail_view(
                 color=COLOR_TEXT_MUTED,
             ),
             actions=[
-                ft.TextButton("キャンセル", on_click=lambda e: close_dialog(delete_dlg)),
+                ft.TextButton(
+                    "キャンセル", on_click=lambda e: close_dialog(delete_dlg)
+                ),
                 ft.FilledButton(
                     "削除", bgcolor=COLOR_DANGER, color="white", on_click=confirm_delete
                 ),
@@ -898,11 +1013,15 @@ def build_detail_view(
                         ),
                         padding=ft.Padding.symmetric(horizontal=10, vertical=6),
                         bgcolor="#EAF2FF" if reacted else COLOR_CARD,
-                        border=ft.border.all(1, COLOR_PRIMARY if reacted else COLOR_BORDER),
+                        border=ft.border.all(
+                            1, COLOR_PRIMARY if reacted else COLOR_BORDER
+                        ),
                         border_radius=12,
                         ink=True,
                         tooltip=tooltip,
-                        on_click=None if disabled else (lambda _e, r=emoji: on_toggle(r)),
+                        on_click=None
+                        if disabled
+                        else (lambda _e, r=emoji: on_toggle(r)),
                     )
                 )
 
@@ -991,7 +1110,9 @@ def build_detail_view(
         dlg.open = True
         page.update()
 
-    def insert_clipboard_image(target_field, on_fail_msg="クリップボードに画像がありません"):
+    def insert_clipboard_image(
+        target_field, on_fail_msg="クリップボードに画像がありません"
+    ):
         path = save_clipboard_image()
         if not path:
             page.snack_bar = ft.SnackBar(ft.Text(on_fail_msg), bgcolor=COLOR_DANGER)
@@ -1025,10 +1146,11 @@ def build_detail_view(
         )
         milestone_field = ft.Dropdown(
             label="マイルストーン",
-            options=[
-                ft.dropdown.Option(key="", text="(なし)")
-            ]
-            + [ft.dropdown.Option(key=str(m["id"]), text=m["title"]) for m in milestones],
+            options=[ft.dropdown.Option(key="", text="(なし)")]
+            + [
+                ft.dropdown.Option(key=str(m["id"]), text=m["title"])
+                for m in milestones
+            ],
             value=str(getattr(issue, "milestone_id", None) or ""),
             border_color=COLOR_BORDER,
             focused_border_color=COLOR_PRIMARY,
@@ -1050,6 +1172,12 @@ def build_detail_view(
             border_color=COLOR_BORDER,
             focused_border_color=COLOR_PRIMARY,
             border_radius=BORDER_RADIUS_BTN,
+            suffix=ft.IconButton(
+                icon=ft.Icons.IMAGE,
+                icon_color=COLOR_PRIMARY,
+                tooltip="クリップボード画像を貼り付け",
+                on_click=lambda _e: insert_clipboard_image(body_field),
+            ),
         )
         error_text = ft.Text("", color=COLOR_DANGER, size=12)
 
@@ -1090,16 +1218,6 @@ def build_detail_view(
                         milestone_field,
                         labels_field,
                         body_field,
-                        ft.Row(
-                            controls=[
-                                ft.IconButton(
-                                    icon=ft.Icons.IMAGE,
-                                    tooltip="クリップボード画像を本文に貼り付け",
-                                    on_click=on_paste_image_into_body,
-                                ),
-                            ],
-                            alignment=ft.MainAxisAlignment.START,
-                        ),
                         error_text,
                     ],
                     spacing=16,
@@ -1136,7 +1254,9 @@ def build_detail_view(
 
     toggle_label = "Close Issue" if issue["status"] == "OPEN" else "Reopen Issue"
     toggle_color = COLOR_DANGER if issue["status"] == "OPEN" else COLOR_OPEN
-    toggle_icon = ft.Icons.CHECK_CIRCLE_OUTLINE if issue["status"] == "OPEN" else ft.Icons.ADJUST
+    toggle_icon = (
+        ft.Icons.CHECK_CIRCLE_OUTLINE if issue["status"] == "OPEN" else ft.Icons.ADJUST
+    )
 
     toggle_button = ft.FilledButton(
         toggle_label,
@@ -1237,6 +1357,7 @@ def build_detail_view(
                 color=ft.Colors.BLACK12,
                 offset=ft.Offset(0, 1),
             ),
+            width=980,
         )
 
     label_controls = [
@@ -1271,7 +1392,7 @@ def build_detail_view(
 
     body_area = ft.Container(
         width=980,
-        height=420,
+        height=600,
         content=ft.Column(
             controls=[
                 ft.Markdown(
@@ -1342,8 +1463,10 @@ def build_detail_view(
                                         icon_color=COLOR_DANGER,
                                         icon_size=16,
                                         tooltip="削除",
-                                        on_click=lambda e, cid=c["id"]: (on_delete_comment(cid)),
-                                    )
+                                        on_click=lambda e, cid=c["id"]: (
+                                            on_delete_comment(cid)
+                                        ),
+                                    ),
                                 ]
                                 if is_mine and state.mode == "edit"
                                 else []
@@ -1438,7 +1561,7 @@ def build_detail_view(
         spacing=4,
         controls=[
             meta,
-            *( [milestone_block, ft.Container(height=12)] if milestone_block else [] ),
+            *([milestone_block, ft.Container(height=12)] if milestone_block else []),
             ft.Container(height=16),
             label_block,
             ft.Container(height=16),
@@ -1449,7 +1572,11 @@ def build_detail_view(
                     controls=[
                         ft.Row(
                             controls=[
-                                ft.Icon(ft.Icons.EMOJI_EMOTIONS, size=18, color=COLOR_TEXT_MUTED),
+                                ft.Icon(
+                                    ft.Icons.EMOJI_EMOTIONS,
+                                    size=18,
+                                    color=COLOR_TEXT_MUTED,
+                                ),
                                 ft.Text(
                                     "リアクション",
                                     size=14,
