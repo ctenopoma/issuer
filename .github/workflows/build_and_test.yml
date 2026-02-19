@@ -27,7 +27,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install flet pyinstaller Pillow flet-desktop
+        pip install flet pyinstaller Pillow flet-desktop pywin32
 
     - name: Build Executable
       run: python build.py
