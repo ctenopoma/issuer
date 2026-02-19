@@ -16,6 +16,8 @@ def build():
         "app.ico;.",
         "--clean",
         "--onefile",  # Generate a single executable
+        "--collect-all",
+        "flet_desktop",  # Bundle Flet desktop runtime
     ]
 
     # CI環境（GitHub Actions等）でない場合のみ、--noconsole を追加する
