@@ -105,9 +105,6 @@ def show_new_issue_dialog(page: ft.Page, state, user: str, on_created):
     )
     error_text = ft.Text("", color=COLOR_DANGER, size=12)
 
-    def on_paste_image_into_body(_e=None):
-        insert_clipboard_image(body_field)
-
     def on_save(_e=None):
         title = (title_field.value or "").strip()
         if not title:

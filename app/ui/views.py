@@ -37,6 +37,9 @@ from app.ui.helpers import (
 from app.utils.attachments import save_clipboard_image
 from app.utils.linkify import linkify_file_paths, linkify_issues
 from app.utils.outlook import create_issue_email_draft
+from app.ui.components.issue_card import IssueListCard
+from app.ui.components.milestone_banner import MilestoneFilterBanner
+from app.ui.components.comment_form import CommentForm
 
 
 def _parse_iso_date(value: str | None) -> date | None:
@@ -160,7 +163,10 @@ def build_issue_list_view(
         filter_service.save_last(filt)
         new_issues = issue_service.list_issues(filt)[:DEFAULT_PAGE_SIZE]
         labels_map = issue_service.get_labels_map([i["id"] for i in new_issues])
-        cards = [build_issue_card(issue) for issue in new_issues]
+        cards = [
+            IssueListCard(issue, labels_map, milestone_map, on_select_issue)
+            for issue in new_issues
+        ]
 
         col = list_column_ref.current
         if col is None:
@@ -324,117 +330,10 @@ def build_issue_list_view(
         text_size=14,
     )
 
-    def build_issue_card(issue) -> ft.Container:
-        created_fmt = format_datetime(issue["created_at"])
-        assignee = issue["assignee"] or "未割り当て"
-        labels = labels_map.get(issue["id"], [])
-        milestone_text = None
-        if getattr(issue, "milestone_id", None):
-            milestone_text = milestone_map.get(issue["milestone_id"], None)
-
-        def on_tap(_e, iid=issue["id"]):
-            on_select_issue(iid)
-
-        accent_color = COLOR_OPEN if issue["status"] == "OPEN" else COLOR_CLOSED
-        status_icon = (
-            ft.Icons.ADJUST if issue["status"] == "OPEN" else ft.Icons.CHECK_CIRCLE
-        )
-
-        meta_row = [
-            ft.Text(f"#{issue['id']}", size=12, color=COLOR_TEXT_MUTED),
-            ft.Text(
-                f"{issue['created_by']} が {created_fmt} に作成",
-                size=12,
-                color=COLOR_TEXT_MUTED,
-            ),
-            ft.Text(f"・  担当: {assignee}", size=12, color=COLOR_TEXT_MUTED),
-        ]
-        if milestone_text:
-            meta_row.append(
-                ft.Text(
-                    f"・  マイルストーン: {milestone_text}",
-                    size=12,
-                    color=COLOR_TEXT_MUTED,
-                )
-            )
-
-        return ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(status_icon, size=24, color=accent_color),
-                    ft.Column(
-                        controls=[
-                            ft.Text(
-                                issue["title"],
-                                weight=ft.FontWeight.BOLD,
-                                size=16,
-                                color=COLOR_TEXT_MAIN,
-                                max_lines=1,
-                                overflow=ft.TextOverflow.ELLIPSIS,
-                            ),
-                            ft.Row(controls=meta_row, spacing=8, wrap=True),
-                            *(
-                                [
-                                    ft.Row(
-                                        controls=[
-                                            ft.Container(
-                                                content=ft.Text(
-                                                    lbl,
-                                                    size=11,
-                                                    color=COLOR_PRIMARY,
-                                                    weight=ft.FontWeight.W_500,
-                                                ),
-                                                bgcolor="#E6F2FF",
-                                                padding=ft.Padding.symmetric(
-                                                    horizontal=8, vertical=2
-                                                ),
-                                                border_radius=10,
-                                            )
-                                            for lbl in labels
-                                        ],
-                                        spacing=4,
-                                        run_spacing=4,
-                                        wrap=True,
-                                    )
-                                ]
-                                if labels
-                                else []
-                            ),
-                        ],
-                        spacing=4,
-                        expand=True,
-                    ),
-                    ft.Container(
-                        content=ft.Text(
-                            issue["status"],
-                            size=11,
-                            color="white",
-                            weight=ft.FontWeight.BOLD,
-                        ),
-                        bgcolor=accent_color,
-                        border_radius=12,
-                        padding=ft.Padding.symmetric(horizontal=10, vertical=2),
-                    ),
-                ],
-                spacing=16,
-                alignment=ft.MainAxisAlignment.START,
-                vertical_alignment=ft.CrossAxisAlignment.START,
-            ),
-            padding=ft.Padding.all(16),
-            bgcolor=COLOR_CARD,
-            border_radius=BORDER_RADIUS_CARD,
-            border=ft.border.all(1, "transparent"),
-            shadow=ft.BoxShadow(
-                blur_radius=2,
-                color=ft.Colors.BLACK12,
-                offset=ft.Offset(0, 1),
-            ),
-            on_click=on_tap,
-            ink=True,
-            margin=ft.margin.only(bottom=12),
-        )
-
-    issue_cards = [build_issue_card(issue) for issue in issues]
+    issue_cards = [
+        IssueListCard(issue, labels_map, milestone_map, on_select_issue)
+        for issue in issues
+    ]
 
     actions_row = ft.Row(
         controls=[
@@ -517,45 +416,10 @@ def build_issue_list_view(
 
     milestone_filter_banner = None
     if active_milestone:
-        total, closed, pct = active_milestone_progress or (0, 0, 0)
-        milestone_filter_banner = ft.Container(
-            content=ft.Row(
-                controls=[
-                    ft.Icon(ft.Icons.FLAG, color=COLOR_PRIMARY, size=16),
-                    ft.Column(
-                        controls=[
-                            ft.Text(
-                                f"マイルストーンで絞り込み中: {active_milestone['title']}",
-                                size=13,
-                                weight=ft.FontWeight.W_600,
-                                color=COLOR_TEXT_MAIN,
-                            ),
-                            ft.Text(
-                                f"進捗 {pct}% ({closed}/{total})  ・  期限: {active_milestone['due_date'] or '未設定'}",
-                                size=12,
-                                color=COLOR_TEXT_MUTED,
-                            ),
-                        ],
-                        spacing=2,
-                    ),
-                    ft.Container(expand=True),
-                    ft.IconButton(
-                        icon=ft.Icons.CLOSE,
-                        tooltip="マイルストーンフィルタを解除",
-                        on_click=lambda e: on_clear_milestone_filter(),
-                    ),
-                ],
-                vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            ),
-            padding=ft.Padding.symmetric(horizontal=14, vertical=10),
-            bgcolor=COLOR_CARD,
-            border_radius=BORDER_RADIUS_CARD,
-            border=ft.border.all(1, COLOR_BORDER),
-            shadow=ft.BoxShadow(
-                blur_radius=2,
-                color=ft.Colors.BLACK12,
-                offset=ft.Offset(0, 1),
-            ),
+        milestone_filter_banner = MilestoneFilterBanner(
+            milestone=active_milestone,
+            progress=active_milestone_progress,
+            on_clear_callback=on_clear_milestone_filter,
         )
 
     if not issue_cards:
@@ -952,26 +816,15 @@ def build_detail_view(
         delete_dlg.open = True
         page.update()
 
-    comment_input = ft.TextField(
-        hint_text="コメントを入力... ",
-        multiline=True,
-        min_lines=3,
-        max_lines=6,
-        border_color="transparent",
-        bgcolor="white",
-        border_radius=BORDER_RADIUS_BTN,
-        disabled=state.mode != "edit",
-        width=900,
-        content_padding=ft.Padding.all(12),
-    )
-
-    def on_submit_comment(e):
-        body = comment_input.value.strip()
-        if not body:
-            return
+    def on_submit_comment(body):
         issue_service.add_comment(issue_id, body, user)
-        comment_input.value = ""
         refresh_view()
+
+    comment_form = CommentForm(
+        user_initial=user[0].upper() if user else "?",
+        on_submit=on_submit_comment,
+        disabled=state.mode != "edit",
+    )
 
     def on_toggle_status(e):
         issue_service.toggle_status(issue_id)
@@ -1135,9 +988,6 @@ def build_detail_view(
         target_field.value = f"{current.rstrip()}{sep}![image]({path})"
         page.update()
 
-    def on_paste_image_to_comment(_e=None):
-        insert_clipboard_image(comment_input)
-
     def show_edit_dialog(e=None):
         milestones = milestone_service.list_all()
         title_field = ft.TextField(
@@ -1190,9 +1040,6 @@ def build_detail_view(
             ),
         )
         error_text = ft.Text("", color=COLOR_DANGER, size=12)
-
-        def on_paste_image_into_body(_e=None):
-            insert_clipboard_image(body_field)
 
         def on_save(ev):
             title = title_field.value.strip()
@@ -1583,34 +1430,7 @@ def build_detail_view(
             controls=[
                 ft.Divider(height=1, color=COLOR_BORDER),
                 ft.Container(height=16),
-                ft.Row(
-                    controls=[
-                        ft.CircleAvatar(
-                            content=ft.Text(user[0].upper() if user else "?"),
-                            radius=16,
-                            bgcolor=COLOR_PRIMARY,
-                            color="white",
-                        ),
-                        comment_input,
-                        ft.IconButton(
-                            icon=ft.Icons.IMAGE,
-                            icon_color=COLOR_PRIMARY,
-                            tooltip="クリップボードの画像を貼り付け",
-                            on_click=on_paste_image_to_comment,
-                            disabled=state.mode != "edit",
-                        ),
-                        ft.IconButton(
-                            icon=ft.Icons.SEND,
-                            icon_color=COLOR_PRIMARY,
-                            tooltip="コメントを送信",
-                            on_click=on_submit_comment,
-                            disabled=state.mode != "edit",
-                        ),
-                    ],
-                    spacing=12,
-                    alignment=ft.MainAxisAlignment.START,
-                    vertical_alignment=ft.CrossAxisAlignment.START,
-                ),
+                comment_form,
             ],
             spacing=8,
         ),
