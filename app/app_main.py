@@ -263,12 +263,31 @@ def main(page: ft.Page):
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
 
+        # 正しい型定義: LRESULT を返し、引数は int, WPARAM, LPARAM
         HOOKPROC = ctypes.CFUNCTYPE(
-            ctypes.c_long,
+            ctypes.wintypes.LPARAM,  # LRESULT (pointer-sized signed int)
             ctypes.c_int,
             ctypes.wintypes.WPARAM,
             ctypes.wintypes.LPARAM,
         )
+
+        # CallNextHookEx の引数・戻り値の型を明示的に設定
+        user32.CallNextHookEx.argtypes = [
+            ctypes.wintypes.HHOOK,
+            ctypes.c_int,
+            ctypes.wintypes.WPARAM,
+            ctypes.wintypes.LPARAM,
+        ]
+        user32.CallNextHookEx.restype = ctypes.wintypes.LPARAM  # LRESULT
+
+        # SetWindowsHookExW の引数・戻り値の型を明示的に設定
+        user32.SetWindowsHookExW.argtypes = [
+            ctypes.c_int,
+            HOOKPROC,
+            ctypes.wintypes.HINSTANCE,
+            ctypes.wintypes.DWORD,
+        ]
+        user32.SetWindowsHookExW.restype = ctypes.wintypes.HHOOK
 
         class MSLLHOOKSTRUCT(ctypes.Structure):
             _fields_ = [

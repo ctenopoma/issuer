@@ -4,6 +4,7 @@ Single responsibility: build flet Views using provided callbacks/state.
 """
 
 import asyncio
+import os
 from datetime import date
 
 import flet as ft
@@ -34,6 +35,7 @@ from app.ui_helpers import (
     parse_labels,
 )
 from app.utils.attachments import save_clipboard_image
+from app.utils.linkify import linkify_file_paths
 
 
 def _parse_iso_date(value: str | None) -> date | None:
@@ -1390,16 +1392,44 @@ def build_detail_view(
         vertical_alignment=ft.CrossAxisAlignment.START,
     )
 
+    def _handle_link_tap(e):
+        """Open file:/// links with OS default handler; others in browser."""
+        url: str = e.data
+        if url.startswith("file:///") or url.startswith("file:"):
+            # Convert file URL back to a local path.
+            from urllib.parse import unquote, urlparse
+
+            parsed = urlparse(url)
+            # UNC: file://server/share -> \\server\share
+            if parsed.hostname:
+                path = (
+                    "\\\\" + parsed.hostname + unquote(parsed.path).replace("/", "\\")
+                )
+            else:
+                path = unquote(parsed.path).replace("/", "\\")
+                # Remove leading backslash for drive-letter paths (\C:\... -> C:\...)
+                if len(path) >= 3 and path[0] == "\\" and path[2] == ":":
+                    path = path[1:]
+            try:
+                os.startfile(path)
+            except OSError:
+                # If the exact path doesn't exist, try opening the parent folder.
+                parent = os.path.dirname(path)
+                if os.path.exists(parent):
+                    os.startfile(parent)
+        else:
+            page.launch_url(url)
+
     body_area = ft.Container(
         width=980,
         height=600,
         content=ft.Column(
             controls=[
                 ft.Markdown(
-                    issue["body"] or "*本文なし*",
+                    linkify_file_paths(issue["body"]) or "*本文なし*",
                     selectable=True,
                     extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
-                    on_tap_link=lambda e: page.launch_url(e.data),
+                    on_tap_link=_handle_link_tap,
                     md_style_sheet=ft.MarkdownStyleSheet(
                         p_text_style=ft.TextStyle(size=16),
                         a_text_style=ft.TextStyle(size=16),
@@ -1476,9 +1506,10 @@ def build_detail_view(
                     ),
                     ft.Container(
                         content=ft.Markdown(
-                            c["body"],
+                            linkify_file_paths(c["body"]),
                             selectable=True,
                             extension_set=ft.MarkdownExtensionSet.GITHUB_WEB,
+                            on_tap_link=_handle_link_tap,
                         ),
                         padding=ft.Padding.only(left=40),
                     ),

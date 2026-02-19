@@ -40,23 +40,23 @@ jobs:
         $exePath = ".\dist\Issuer.exe"
         Write-Host "Starting $exePath..."
 
-        # exeを起動して、プロセス情報を取得（CI環境なのでコンソール出力エラーも拾えます）
+        # Start the exe and get process info
         $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
 
         Write-Host "Waiting for 5 seconds to check for crashes..."
         Start-Sleep -Seconds 5
 
-        # プロセスがすでに終了してしまっているかチェック
+        # Check if the process has already exited
         if ($process.HasExited) {
             if ($process.ExitCode -ne 0) {
-                Write-Error "❌ テスト失敗: アプリが起動直後にクラッシュしました！ (Exit Code: $($process.ExitCode))"
+                Write-Error "FAIL: App crashed immediately after launch! (Exit Code: $($process.ExitCode))"
                 exit 1
             } else {
-                Write-Error "❌ テスト失敗: エラーは出ていませんが、アプリがすぐに閉じてしまいました。"
+                Write-Error "FAIL: No error reported, but the app closed immediately."
                 exit 1
             }
         } else {
-            Write-Host "✅ テスト成功: アプリは正常に起動し、待機しています。"
-            # テスト完了なので、起動したアプリのプロセスを強制終了する
+            Write-Host "PASS: App launched successfully and is still running."
+            # Test complete, force stop the app process
             Stop-Process -Id $process.Id -Force
         }
