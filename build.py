@@ -18,6 +18,8 @@ def build():
         "--onefile",
         "--collect-all",
         "flet_desktop",  # Bundle Flet desktop runtime
+        "--collect-data",
+        "flet",  # Bundle Flet data files (icons.json etc.)
         # asyncio 関連の隠しインポート（WinError 10022 対策）
         "--hidden-import",
         "asyncio",
