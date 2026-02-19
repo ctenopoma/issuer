@@ -15,9 +15,22 @@ def build():
         "--add-data",
         "app.ico;.",
         "--clean",
-        "--onefile",  # Generate a single executable
+        "--onefile",
         "--collect-all",
         "flet_desktop",  # Bundle Flet desktop runtime
+        # asyncio 関連の隠しインポート（WinError 10022 対策）
+        "--hidden-import",
+        "asyncio",
+        "--hidden-import",
+        "asyncio.events",
+        "--hidden-import",
+        "asyncio.base_events",
+        "--hidden-import",
+        "asyncio.proactor_events",
+        "--hidden-import",
+        "asyncio.windows_events",
+        "--hidden-import",
+        "asyncio.windows_utils",
     ]
 
     # CI環境（GitHub Actions等）でない場合のみ、--noconsole を追加する

@@ -14,9 +14,14 @@ import sys
 def get_base_path() -> str:
     """
     実行環境に応じてアプリのベースディレクトリを返す。
+    - リランチ後: 元の exe があったディレクトリ（ネットワーク共有等）
     - exe 化後  : exe ファイルの存在するディレクトリ
     - スクリプト: .py ファイルの存在するディレクトリ
     """
+    # ローカルコピーから再起動された場合、元のディレクトリを使う
+    original_dir = os.environ.get("ISSUER_ORIGINAL_DIR")
+    if original_dir:
+        return original_dir
     if getattr(sys, "frozen", False):
         return os.path.dirname(sys.executable)
     # config.py is in app/, so project root is one level up
