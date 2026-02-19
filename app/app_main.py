@@ -4,18 +4,15 @@ Issue Manager v1.0
 """
 
 import atexit
-import base64
 import ctypes
 import ctypes.wintypes
 import logging
 import signal
 import sys
 import threading
-from io import BytesIO
 from pathlib import Path
 
 import flet as ft
-from PIL import Image
 
 from app.database.schema import initialize_schema
 from app.config import APP_TITLE, COLOR_BG, COLOR_PRIMARY
@@ -34,29 +31,11 @@ from app.utils.lock import (
 logger = logging.getLogger(__name__)
 
 
-def _load_app_icon() -> str | None:
-    """Load app.ico and return a data URL usable for the Flet window icon."""
-
-    search_roots = [
-        Path(getattr(sys, "_MEIPASS", "")),
-        Path(__file__).resolve().parent.parent,
-        Path.cwd(),
-    ]
-
-    for root in search_roots:
-        candidate = root / "app.ico"
-        if candidate.exists():
-            try:
-                with Image.open(candidate) as img:
-                    buffer = BytesIO()
-                    img.save(buffer, format="PNG")
-                    encoded = base64.b64encode(buffer.getvalue()).decode("utf-8")
-                    return f"data:image/png;base64,{encoded}"
-            except Exception:
-                logger.warning("Failed to load app.ico for window icon", exc_info=True)
-                return str(candidate)
-
-    return None
+def resource_path(relative_path: str) -> str:
+    """Get absolute path to resource, works for dev and for PyInstaller"""
+    if hasattr(sys, "_MEIPASS"):
+        return str(Path(sys._MEIPASS) / relative_path)
+    return str(Path.cwd() / relative_path)
 
 
 # ==========================================================================
@@ -89,11 +68,8 @@ signal.signal(signal.SIGTERM, _cleanup_handler)
 def main(page: ft.Page):
     global _app_state
 
-    icon_data = _load_app_icon()
-
     page.title = APP_TITLE
-    if icon_data:
-        page.window.icon = icon_data
+    page.window.icon = resource_path("app.ico")
     page.window.maximized = True
     page.theme_mode = ft.ThemeMode.LIGHT
     page.bgcolor = COLOR_BG
