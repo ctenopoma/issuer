@@ -79,9 +79,16 @@ class CommentForm(ft.Container):
         if not body:
             return
 
-        # Call the callback
-        self.on_submit(body)
-
-        # Clear input after submit
+        # Clear input BEFORE calling the callback, because the callback
+        # triggers refresh_view() which rebuilds the entire view tree.
+        # After that, this CommentForm is no longer attached to the page,
+        # so calling .update() would raise "Control must be added to the
+        # page first".
         self.comment_input.value = ""
-        self.comment_input.update()
+        try:
+            self.comment_input.update()
+        except Exception:
+            pass  # control may already be detached
+
+        # Call the callback (this will rebuild the view)
+        self.on_submit(body)

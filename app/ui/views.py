@@ -4,8 +4,11 @@ Single responsibility: build flet Views using provided callbacks/state.
 """
 
 import asyncio
+import logging
 import os
 from datetime import date
+
+logger = logging.getLogger(__name__)
 
 import flet as ft
 
@@ -772,7 +775,8 @@ def build_detail_view(
             milestone_stats = None
 
     def refresh_view():
-        page.views.pop()
+        if page.views:
+            page.views.pop()
         page.views.append(
             build_detail_view(
                 page,
@@ -817,8 +821,17 @@ def build_detail_view(
         page.update()
 
     def on_submit_comment(body):
-        issue_service.add_comment(issue_id, body, user)
-        refresh_view()
+        try:
+            issue_service.add_comment(issue_id, body, user)
+            refresh_view()
+        except Exception as exc:
+            logger.exception("Failed to add comment")
+            page.snack_bar = ft.SnackBar(
+                ft.Text(f"コメントの保存に失敗しました: {exc}"),
+                bgcolor=COLOR_DANGER,
+            )
+            page.snack_bar.open = True
+            page.update()
 
     comment_form = CommentForm(
         user_initial=user[0].upper() if user else "?",
