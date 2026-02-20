@@ -29,7 +29,18 @@ def get_base_path() -> str:
 
 
 BASE_PATH = get_base_path()
-DB_PATH = os.path.join(BASE_PATH, "data.db")
+
+# DB パス: 共有フォルダ（マスター）とローカルコピー
+SHARED_DB_PATH = os.path.join(BASE_PATH, "data.db")
+LOCAL_DIR = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Issuer")
+LOCAL_DB_PATH = os.path.join(LOCAL_DIR, "data.db")
+
+# frozen EXE + ローカルリランチならローカル DB を使う
+_use_local_db = getattr(sys, "frozen", False) and bool(
+    os.environ.get("ISSUER_LOCAL_RELAUNCH")
+)
+DB_PATH = LOCAL_DB_PATH if _use_local_db else SHARED_DB_PATH
+
 LOCK_PATH = os.path.join(BASE_PATH, "app.lock")
 ASSETS_DIR = os.path.join(BASE_PATH, "assets")
 

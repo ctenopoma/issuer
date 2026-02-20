@@ -7,7 +7,10 @@ import atexit
 import ctypes
 import ctypes.wintypes
 import logging
+import os
+import shutil
 import signal
+import sqlite3
 import sys
 import threading
 from pathlib import Path
@@ -15,7 +18,14 @@ from pathlib import Path
 import flet as ft
 
 from app.database.schema import initialize_schema
-from app.config import APP_TITLE, COLOR_BG, COLOR_PRIMARY
+from app.config import (
+    APP_TITLE,
+    COLOR_BG,
+    COLOR_PRIMARY,
+    SHARED_DB_PATH,
+    LOCAL_DB_PATH,
+    LOCAL_DIR,
+)
 from app.ui.helpers import current_user, parse_labels
 from app.ui.state import AppState
 from app.ui import views, actions
@@ -45,12 +55,52 @@ def resource_path(relative_path: str) -> str:
 
 _app_state: AppState | None = None
 
+# ローカルリランチモードかどうか
+_is_local_relaunch = bool(os.environ.get("ISSUER_LOCAL_RELAUNCH"))
+
+
+def _sync_db_back() -> None:
+    """ローカル DB を共有フォルダへ書き戻し、ローカル DB を削除する。"""
+    if not _is_local_relaunch:
+        return
+    if not os.path.exists(LOCAL_DB_PATH):
+        return
+
+    try:
+        # WAL チェックポイントを実行してから書き戻す
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.close()
+    except Exception:
+        logger.warning("WAL checkpoint failed", exc_info=True)
+
+    # ローカル → 共有フォルダへコピー
+    db_files = ["data.db", "data.db-wal", "data.db-shm"]
+    try:
+        for name in db_files:
+            src = os.path.join(LOCAL_DIR, name)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(os.path.dirname(SHARED_DB_PATH), name))
+        logger.info("DB synced back to shared folder")
+    except Exception:
+        logger.error("Failed to sync DB back to shared folder", exc_info=True)
+
+    # ローカル DB を削除
+    for name in db_files:
+        local_file = os.path.join(LOCAL_DIR, name)
+        try:
+            if os.path.exists(local_file):
+                os.remove(local_file)
+        except OSError:
+            pass
+
 
 def _cleanup_handler(signum=None, frame=None):
     """シグナルハンドラー兼クリーンアップ。"""
     global _app_state
     try:
         if _app_state and _app_state.mode == "edit":
+            _sync_db_back()
             release_lock()
     except Exception:
         pass  # クリーンアップ中の例外は無視する
@@ -348,9 +398,19 @@ def main(page: ft.Page):
             _stop_mouse_back_hook()
             try:
                 if state.mode == "edit":
+                    _sync_db_back()
                     release_lock()
+                elif _is_local_relaunch:
+                    # 読み取り専用でもローカル DB は削除
+                    for name in ["data.db", "data.db-wal", "data.db-shm"]:
+                        p = os.path.join(LOCAL_DIR, name)
+                        if os.path.exists(p):
+                            try:
+                                os.remove(p)
+                            except OSError:
+                                pass
             except Exception:
-                logger.warning("Failed to release lock on window close", exc_info=True)
+                logger.warning("Failed to cleanup on window close", exc_info=True)
             page.window.prevent_close = False
             await page.window.close()
 

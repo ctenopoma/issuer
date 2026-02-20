@@ -7,9 +7,10 @@ import sys
 
 def _needs_local_relaunch() -> bool:
     """
-    _overlapped の import を試み、失敗した場合のみ True を返す。
-    ネットワーク共有上で _overlapped.pyd のロードに失敗する環境への対策。
-    正常に import できる環境では何もしない。
+    PyInstaller exe の場合、常にローカルにコピーして実行する。
+    共有フォルダからの直接実行は DB I/O の遅延や
+    _overlapped.pyd のロード失敗など不安定要因が多いため、
+    常にローカルコピーで安定動作させる。
     """
     # PyInstaller でビルドされた exe でなければスキップ
     if not getattr(sys, "frozen", False):
@@ -19,20 +20,21 @@ def _needs_local_relaunch() -> bool:
     if os.environ.get("ISSUER_LOCAL_RELAUNCH"):
         return False
 
-    # テスト用: 強制的にリランチ経路を通す
-    if os.environ.get("ISSUER_FORCE_RELAUNCH"):
-        return True
+    return True
 
-    try:
-        import _overlapped  # noqa: F401
 
-        return False  # 正常にロードできた → そのまま起動
-    except (ImportError, OSError):
-        return True  # ロード失敗 → ローカルにコピーして再起動が必要
+def _copy_db_to_local(shared_dir: str, local_dir: str) -> None:
+    """共有フォルダの DB ファイルをローカルにコピーする。"""
+    db_files = ["data.db", "data.db-wal", "data.db-shm"]
+    os.makedirs(local_dir, exist_ok=True)
+    for name in db_files:
+        src = os.path.join(shared_dir, name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(local_dir, name))
 
 
 def _relaunch_from_local() -> None:
-    """exe をローカルにコピーして再起動する。"""
+    """exe をローカルにコピーして再起動する。DB もローカルへコピーする。"""
     exe_path = sys.executable
 
     # コピー先: %LOCALAPPDATA%\Issuer\Issuer.exe
@@ -53,6 +55,10 @@ def _relaunch_from_local() -> None:
     if need_copy:
         os.makedirs(local_dir, exist_ok=True)
         shutil.copy2(exe_path, local_exe)
+
+    # DB をローカルにコピー（data.db + WAL/SHM）
+    shared_dir = os.path.dirname(exe_path)
+    _copy_db_to_local(shared_dir, local_dir)
 
     # 再帰防止フラグ + 元の exe パスを渡してローカルから再起動
     env = os.environ.copy()
