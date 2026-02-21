@@ -1,29 +1,27 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
-IssueManager.exe
-.ruff_cache/
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
 
-# database
-*.db
-assets/
-data.db-shm
-data.db-wal
+node_modules
+dist
+dist-ssr
+*.local
 
-# temparature file
-app.lock
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
-# Virtual environments
-.venv
-venv/
-
-# build files
-build/
-dist/
-*.egg-info/
-*.exe
-*.spec
+*.pyc
+*.png
