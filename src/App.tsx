@@ -21,13 +21,37 @@ export default function App() {
   const [windowsName, setWindowsName] = useState('');
   const [savedFilter, setSavedFilter] = useState<FilterState | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  // History stack for back navigation
+  const [history, setHistory] = useState<{ view: ViewType, issueId?: number }[]>([]);
+
   const viewRef = useRef(currentView);
+  const selectedIssueRef = useRef(selectedIssueId);
   viewRef.current = currentView;
+  selectedIssueRef.current = selectedIssueId;
+
+  // Use a ref for history to access the latest state inside the global mouse event listener
+  const historyRef = useRef(history);
+  historyRef.current = history;
 
   const navigateTo = (view: ViewType, issueId?: number) => {
+    // Save current state to history before navigating
+    setHistory(prev => [...prev, { view: currentView, issueId: selectedIssueId || undefined }]);
+
     setCurrentView(view);
     if (issueId !== undefined) {
       setSelectedIssueId(issueId);
+    }
+  };
+
+  const navigateBack = () => {
+    const hist = historyRef.current;
+    if (hist.length > 0) {
+      const prev = hist[hist.length - 1];
+      setHistory(h => h.slice(0, -1));
+      setCurrentView(prev.view);
+      setSelectedIssueId(prev.issueId || null);
+    } else if (viewRef.current !== 'LIST') {
+      setCurrentView('LIST');
     }
   };
 
@@ -72,13 +96,13 @@ export default function App() {
     };
   }, []);
 
-  // マウスの「戻る」ボタン (XButton1, button=3) で一覧に戻る
+  // マウスの「戻る」ボタン (XButton1, button=3) で履歴を戻る
   useEffect(() => {
     const handleMouseBack = (e: MouseEvent) => {
-      if (e.button === 3 && viewRef.current !== 'LIST') {
+      if (e.button === 3) {
         e.preventDefault();
         e.stopPropagation();
-        setCurrentView('LIST');
+        navigateBack();
       }
     };
     const handleAuxClick = (e: MouseEvent) => {
@@ -174,14 +198,14 @@ export default function App() {
           <IssueDetail
             key={`detail-${selectedIssueId}-${refreshKey}`}
             issueId={selectedIssueId}
-            onBack={() => navigateTo('LIST')}
+            onBack={navigateBack}
             onNavigateToIssue={(id) => navigateTo('DETAIL', id)}
             currentUser={currentUser}
           />
         )}
         {currentView === 'NEW' && (
           <NewIssue
-            onCancel={() => navigateTo('LIST')}
+            onCancel={navigateBack}
             onCreated={(id: number) => navigateTo('DETAIL', id)}
             currentUser={currentUser}
           />
@@ -189,7 +213,7 @@ export default function App() {
         {currentView === 'MILESTONE' && (
           <MilestoneProgress
             key={`milestone-${refreshKey}`}
-            onBack={() => navigateTo('LIST')}
+            onBack={navigateBack}
             onSelectMilestone={handleMilestoneSelect}
           />
         )}
@@ -197,7 +221,7 @@ export default function App() {
           <Settings
             currentUser={currentUser}
             onUserChanged={setCurrentUser}
-            onBack={() => navigateTo('LIST')}
+            onBack={navigateBack}
           />
         )}
       </main>
