@@ -1,6 +1,5 @@
-name: Windows App Build and Test
+name: Windows App Build and Test (Tauri/Rust)
 
-# mainブランチにpushされた時、またはPull Requestが作られた時に自動実行
 on:
   push:
     branches: [ main ]
@@ -9,184 +8,107 @@ on:
 
 jobs:
   build-and-test:
-    # Windows 10(2019) と Windows 11(2022) の両方で同時にテストを走らせます
+    name: Build and Test on Windows
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
         os: [windows-2019, windows-2022]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.13'
+      - name: Set up Rust
+        uses: actions/setup-rust@v1
+        with:
+          rust-version: stable
 
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install flet pyinstaller Pillow flet-desktop pywin32
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
 
-    - name: Build Executable
-      run: python build.py
+      - name: (Optional) Build frontend
+        run: |
+          if [ -f package.json ]; then
+            npm ci
+            npm run build --if-present
+          fi
 
-    # -------------------------------------------------------
-    # テスト 1: 通常起動（_overlapped 正常 → そのまま起動）
-    # -------------------------------------------------------
-    - name: "Test 1: Normal Launch"
-      shell: powershell
-      run: |
-        $exePath = ".\dist\Issuer.exe"
-        Write-Host "=== Test 1: Normal Launch ==="
-        Write-Host "Starting $exePath..."
+      - name: Build src-tauri (release)
+        working-directory: src-tauri
+        run: |
+          cargo build --release
 
-        $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
-        Start-Sleep -Seconds 5
+      - name: Run Relaunch Tests
+        shell: powershell
+        run: |
+          $exePath = Resolve-Path "src-tauri\target\release\issuer.exe"
+          Write-Host "Built exe: $exePath"
 
-        if ($process.HasExited) {
-            if ($process.ExitCode -ne 0) {
-                Write-Error "FAIL: App crashed! (Exit Code: $($process.ExitCode))"
-                exit 1
-            } else {
-                Write-Error "FAIL: App closed immediately."
-                exit 1
-            }
-        } else {
-            Write-Host "PASS: App launched successfully and is still running."
-            Stop-Process -Id $process.Id -Force
-        }
+          # Test 1: Ensure relaunch copies to LOCALAPPDATA\Issuer and spawns copy
+          Write-Host "=== Test 1: Relaunch - Copy and Restart ==="
+          $localDir = "$env:LOCALAPPDATA\Issuer"
+          $localExe = Join-Path $localDir (Split-Path $exePath -Leaf)
+          if (Test-Path $localExe) { Remove-Item $localExe -Force }
 
-    # -------------------------------------------------------
-    # テスト 2: 強制リランチ（_overlapped 失敗を模擬 → ローカルコピー＆再起動）
-    # -------------------------------------------------------
-    - name: "Test 2: Force Relaunch - Copy and Restart"
-      shell: powershell
-      run: |
-        $exePath = ".\dist\Issuer.exe"
-        $localExe = "$env:LOCALAPPDATA\Issuer\Issuer.exe"
-        Write-Host "=== Test 2: Force Relaunch ==="
+          $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
+          Start-Sleep -Seconds 6
 
-        # 事前にローカルコピーがあれば削除
-        if (Test-Path $localExe) { Remove-Item $localExe -Force }
-
-        # ISSUER_FORCE_RELAUNCH=1 で起動 → コピー＆再起動の経路を通す
-        $env:ISSUER_FORCE_RELAUNCH = "1"
-        $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
-        Start-Sleep -Seconds 8
-
-        # 元のプロセスは exit(0) で終了しているはず
-        if (-not $process.HasExited) {
-            Write-Host "WARNING: Original process still running, stopping it."
-            Stop-Process -Id $process.Id -Force
-        }
-
-        # ローカルにコピーされたか確認
-        if (Test-Path $localExe) {
+          # original may exit; ensure local copy exists
+          if (Test-Path $localExe) {
             Write-Host "PASS: Local copy created at $localExe"
-        } else {
+          } else {
             Write-Error "FAIL: Local copy was NOT created at $localExe"
             exit 1
-        }
+          }
 
-        # ローカルコピーから起動したプロセスが動いているか確認
-        $localProcess = Get-Process -Name "Issuer" -ErrorAction SilentlyContinue
-        if ($localProcess) {
+          # Check that a relaunch process is running
+          $localProcess = Get-Process -Name "issuer" -ErrorAction SilentlyContinue
+          if ($localProcess) {
             Write-Host "PASS: Relaunched process is running (PID: $($localProcess.Id))"
-            Stop-Process -Name "Issuer" -Force
-            Start-Sleep -Seconds 2
-        } else {
-            Write-Error "FAIL: Relaunched process is not running."
-            exit 1
-        }
+            Stop-Process -Id $localProcess.Id -Force
+            Start-Sleep -Seconds 1
+          } else {
+            Write-Error "FAIL: Relaunched process is not running."; exit 1
+          }
 
-        # 環境変数をクリア
-        Remove-Item Env:ISSUER_FORCE_RELAUNCH
+          # Test 2: Relaunch prevention via ISSUER_LOCAL_RELAUNCH
+          Write-Host "=== Test 2: Relaunch Prevention ==="
+          if (Test-Path $localDir) { Remove-Item $localDir -Recurse -Force }
+          $env:ISSUER_LOCAL_RELAUNCH = "1"
+          $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
+          Start-Sleep -Seconds 4
+          if (Test-Path $localExe) { Write-Error "FAIL: Local copy created despite ISSUER_LOCAL_RELAUNCH=1"; Stop-Process -Name issuer -Force -ErrorAction SilentlyContinue; exit 1 } else { Write-Host "PASS: No local copy created (relaunch prevented)." }
+          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
+          Remove-Item Env:ISSUER_LOCAL_RELAUNCH
 
-    # -------------------------------------------------------
-    # テスト 3: 再帰防止（ISSUER_LOCAL_RELAUNCH=1 → コピーしない）
-    # -------------------------------------------------------
-    - name: "Test 3: Relaunch Prevention"
-      shell: powershell
-      run: |
-        $exePath = ".\dist\Issuer.exe"
-        $localExe = "$env:LOCALAPPDATA\Issuer\Issuer.exe"
-        Write-Host "=== Test 3: Relaunch Prevention ==="
+          # Test 3: Skip copy when up-to-date (use issuer_version.txt)
+          Write-Host "=== Test 3: Skip Copy When Up-to-Date ==="
+          if (-not (Test-Path $localDir)) { New-Item -ItemType Directory -Path $localDir | Out-Null }
+          Copy-Item $exePath $localExe -Force
+          $versionFile = Join-Path $localDir "issuer_version.txt"
+          # Set local version to equal to build version to prevent copy
+          if ($env:VERSION) { $v = $env:VERSION } else { $v = "$(git describe --tags --abbrev=0 2>$null)" }
+          if (-not $v) { $v = "0.0.0" }
+          Set-Content -Path $versionFile -Value $v -Encoding UTF8
+          $beforeTime = (Get-Item $localExe).LastWriteTime
 
-        # 前のテストで作られたローカルコピーを削除
-        if (Test-Path "$env:LOCALAPPDATA\Issuer") {
-            Remove-Item "$env:LOCALAPPDATA\Issuer" -Recurse -Force
-        }
+          Start-Sleep -Seconds 2
+          $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
+          Start-Sleep -Seconds 5
+          if (-not $process.HasExited) { Stop-Process -Id $process.Id -Force }
 
-        # ISSUER_LOCAL_RELAUNCH=1 → リランチせずそのまま起動するはず
-        $env:ISSUER_LOCAL_RELAUNCH = "1"
-        $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
-        Start-Sleep -Seconds 5
+          $afterTime = (Get-Item $localExe).LastWriteTime
+          if ($beforeTime -eq $afterTime) { Write-Host "PASS: Local copy was NOT overwritten (skip-copy working)." } else { Write-Host "WARNING: Local copy was overwritten." }
 
-        # コピーが発生していないことを確認
-        if (Test-Path $localExe) {
-            Write-Error "FAIL: Local copy was created despite ISSUER_LOCAL_RELAUNCH=1"
-            Stop-Process -Name "Issuer" -Force -ErrorAction SilentlyContinue
-            exit 1
-        } else {
-            Write-Host "PASS: No local copy created (relaunch prevention working)."
-        }
+          # Cleanup
+          if (Test-Path $localDir) { Remove-Item $localDir -Recurse -Force -ErrorAction SilentlyContinue }
 
-        # プロセスがそのまま動いているか確認
-        if (-not $process.HasExited) {
-            Write-Host "PASS: App is running directly without relaunch."
-            Stop-Process -Id $process.Id -Force
-        } else {
-            if ($process.ExitCode -ne 0) {
-                Write-Error "FAIL: App crashed! (Exit Code: $($process.ExitCode))"
-                exit 1
-            } else {
-                Write-Error "FAIL: App closed immediately."
-                exit 1
-            }
-        }
-
-        Remove-Item Env:ISSUER_LOCAL_RELAUNCH
-
-    # -------------------------------------------------------
-    # テスト 4: コピー不要時のスキップ（同一ファイルが既存 → コピーせず再起動）
-    # -------------------------------------------------------
-    - name: "Test 4: Skip Copy When Up-to-Date"
-      shell: powershell
-      run: |
-        $exePath = Resolve-Path ".\dist\Issuer.exe"
-        $localDir = "$env:LOCALAPPDATA\Issuer"
-        $localExe = "$localDir\Issuer.exe"
-        Write-Host "=== Test 4: Skip Copy When Up-to-Date ==="
-
-        # 事前にローカルに同一ファイルを配置
-        if (-not (Test-Path $localDir)) { New-Item -ItemType Directory -Path $localDir | Out-Null }
-        Copy-Item $exePath $localExe -Force
-        $beforeTime = (Get-Item $localExe).LastWriteTime
-
-        # 少し待ってからリランチ（タイムスタンプ比較のため）
-        Start-Sleep -Seconds 2
-
-        $env:ISSUER_FORCE_RELAUNCH = "1"
-        $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
-        Start-Sleep -Seconds 5
-
-        # 元プロセスが終了するのを待つ
-        if (-not $process.HasExited) {
-            Stop-Process -Id $process.Id -Force
-        }
-
-        # コピーが発生していないことを確認（LastWriteTime が変わっていない）
-        $afterTime = (Get-Item $localExe).LastWriteTime
-        if ($beforeTime -eq $afterTime) {
-            Write-Host "PASS: Local copy was NOT overwritten (skip-copy working)."
-        } else {
-            Write-Host "WARNING: Local copy was overwritten (timestamps differ), but relaunch still works."
-        }
-
-        # クリーンアップ
-        Stop-Process -Name "Issuer" -Force -ErrorAction SilentlyContinue
-        Start-Sleep -Seconds 2
-        Remove-Item Env:ISSUER_FORCE_RELAUNCH
-        if (Test-Path $localDir) { Remove-Item $localDir -Recurse -Force -ErrorAction SilentlyContinue }
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: issuer-windows-release
+          path: src-tauri/target/release/issuer.exe

@@ -12,7 +12,7 @@ fn main() {
 
     println!("cargo:rustc-env=ISSUER_VERSION={}", ver);
     println!("cargo:rerun-if-env-changed=VERSION");
-}
-fn main() {
-    tauri_build::build()
+
+    // Continue with tauri build hook
+    let _ = tauri_build::build();
 }
