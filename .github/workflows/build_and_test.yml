@@ -2,7 +2,8 @@ name: Windows App Build and Test (Tauri/Rust)
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - '**'
   pull_request:
     branches: [ main ]
 
