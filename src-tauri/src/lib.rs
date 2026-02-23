@@ -63,8 +63,14 @@ pub fn run() {
                 let _ = crate::sync::merge_sync_temp_to_master(&state.config);
                 lock::release_lock(&state.config);
 
-                // Clean up local DB if this is a local copy
-                if state.config.is_local_relaunch {
+                // Clean up local DB if this is a local copy created from a different original location
+                // Avoid deleting DB when original_dir and local_dir are the same (e.g. installed in LocalAppData)
+                if state.config.is_local_relaunch && state.config.original_dir != state.config.local_dir {
+                    // Only remove local files if we actually created a local copy (marker exists)
+                    let marker_path = state.config.local_dir.join("local_copy.marker");
+                    if !marker_path.exists() {
+                        return;
+                    }
                     // Force close the DB by replacing it with an in-memory dummy connection
                     if let Ok(mut guard) = state.db.lock() {
                         if let Ok(dummy) = rusqlite::Connection::open_in_memory() {

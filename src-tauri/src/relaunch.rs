@@ -76,6 +76,9 @@ pub fn ensure_local_execution(config: &AppConfig) -> bool {
             if let Ok(_) = fs::copy(&current_exe, &local_exe) {
                 // After successful copy, write version marker so subsequent runs can compare
                 let _ = fs::File::create(&local_version_file).and_then(|mut f| f.write_all(current_version.as_bytes()));
+                // Also create a marker file indicating this directory contains a local copy
+                let marker = config.local_dir.join("local_copy.marker");
+                let _ = fs::File::create(&marker);
             }
         }
     }

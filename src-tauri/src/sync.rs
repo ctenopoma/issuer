@@ -326,8 +326,20 @@ pub fn merge_sync_temp_to_master(config: &AppConfig) -> Result<(), String> {
         let _ = fs::remove_file(&temp_merge_db_path);
     }
 
-    fs::copy(&master_db_path, &temp_merge_db_path)
-        .map_err(|e| format!("Failed to copy master DB to temp: {}", e))?;
+    // If master (shared) DB does not exist, create it from local DB so that
+    // merging can proceed and the shared location will receive the DB.
+    if !master_db_path.exists() {
+        let local_db = config.local_dir.join("data.db");
+        if local_db.exists() {
+            fs::copy(&local_db, &temp_merge_db_path)
+                .map_err(|e| format!("Failed to copy local DB to temp (creating master): {}", e))?;
+        } else {
+            return Err("Neither master nor local DB exists to create temp_merge.db".to_string());
+        }
+    } else {
+        fs::copy(&master_db_path, &temp_merge_db_path)
+            .map_err(|e| format!("Failed to copy master DB to temp: {}", e))?;
+    }
 
     // 3. Local merge (safe)
     let temp_conn = crate::db::establish_connection(&temp_merge_db_path)
