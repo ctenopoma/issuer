@@ -279,6 +279,8 @@ def main(page: ft.Page):
     # ------------------------------------------------------------------
     _mouse_hook_id = None
     _mouse_hook_thread_id = None
+    # グローバルでコールバック参照を保持して GC を防止
+    _global_hook_proc = None
 
     def _start_mouse_back_hook():
         """Windows 低レベルマウスフックで XButton1 を検出する。"""
@@ -292,8 +294,9 @@ def main(page: ft.Page):
         kernel32 = ctypes.windll.kernel32
 
         # 正しい型定義: LRESULT を返し、引数は int, WPARAM, LPARAM
-        HOOKPROC = ctypes.CFUNCTYPE(
-            ctypes.wintypes.LPARAM,  # LRESULT (pointer-sized signed int)
+        # WinAPI のコールバックは WINFUNCTYPE を使い、戻り値は c_long (LRESULT)
+        HOOKPROC = ctypes.WINFUNCTYPE(
+            ctypes.c_long,  # LRESULT
             ctypes.c_int,
             ctypes.wintypes.WPARAM,
             ctypes.wintypes.LPARAM,
@@ -306,7 +309,7 @@ def main(page: ft.Page):
             ctypes.wintypes.WPARAM,
             ctypes.wintypes.LPARAM,
         ]
-        user32.CallNextHookEx.restype = ctypes.wintypes.LPARAM  # LRESULT
+        user32.CallNextHookEx.restype = ctypes.c_long  # LRESULT
 
         # SetWindowsHookExW の引数・戻り値の型を明示的に設定
         user32.SetWindowsHookExW.argtypes = [
@@ -339,14 +342,18 @@ def main(page: ft.Page):
                         )
             return user32.CallNextHookEx(_mouse_hook_id, nCode, wParam, lParam)
 
-        # prevent garbage collection of callback
-        _hook_proc_ref = HOOKPROC(low_level_mouse_proc)
+        # prevent garbage collection of callback — グローバル変数に保持
+        nonlocal _mouse_hook_id, _mouse_hook_thread_id
+        global _global_hook_proc
+        _global_hook_proc = HOOKPROC(low_level_mouse_proc)
 
         def _run_hook():
             nonlocal _mouse_hook_id, _mouse_hook_thread_id
             _mouse_hook_thread_id = kernel32.GetCurrentThreadId()
+            # WH_MOUSE_LL の場合は hInstance に NULL を渡しても動作しますが、
+            # 明示的に None を使います。
             _mouse_hook_id = user32.SetWindowsHookExW(
-                WH_MOUSE_LL, _hook_proc_ref, None, 0
+                WH_MOUSE_LL, _global_hook_proc, None, 0
             )
             if not _mouse_hook_id:
                 logger.warning("Failed to install mouse back button hook")
