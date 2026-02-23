@@ -1,68 +1,113 @@
-# Issuer v0.2.1
+# Issuer
 
-共有フォルダに置くだけで動く、チーム向け Issue 管理ツール。
+**v1.0.0** | 共有フォルダ向け ローカルファースト同期型 Issue管理アプリケーション
 
-## 必要環境
+Issuerは、社内のファイルサーバー（共有フォルダ）上に配置して複数人で利用できる軽量なIssue管理デスクトップアプリです。専用サーバーの構築やアカウント管理は不要で、共有フォルダから実行ファイルを起動するだけで使えます。
 
-- Python 3.13 以上
-- Windows（共有フォルダ運用を想定）
+## 特徴
 
-## セットアップ
+- **サーバーレス運用** — 共有フォルダに `Issuer.exe` と `data.db` を置くだけ。サーバー構築・ログイン不要
+- **ローカルファースト** — 起動時にDBをローカルPCへコピーし、全操作をローカルで実行。ネットワーク遅延の影響なし
+- **複数人同時利用** — JSON差分ファイルによるバックグラウンド同期（3秒間隔）で、他ユーザーの変更がリアルタイムに反映
+- **データ破損防止** — SQLiteへのネットワーク越し直接書き込みを構造的に排除
+
+## 機能一覧
+
+| 機能 | 説明 |
+|---|---|
+| Issue管理 | 作成・編集・クローズ・論理削除。ステータスによるフィルタリング |
+| コメント | Issue単位のスレッド式コメント |
+| マイルストーン | 期間設定・進捗トラッキング |
+| ラベル | Issueの分類・タグ付け |
+| リアクション | Issue・コメントへの絵文字リアクション |
+| Markdown | GFM対応のリッチテキストプレビュー |
+| Issue相互参照 | `#123` 形式のクロスリファレンス自動リンク |
+| 画像貼り付け | クリップボードから画像を直接ペースト |
+| Outlook連携 | Issueの内容からOutlookメール下書きを生成 |
+| 表示名設定 | 初回起動時に名前を登録。設定からいつでも変更可能 |
+
+## アーキテクチャ
+
+### Local-first & Hidden Delta Sync
+
+```
+📁 共有フォルダ/プロジェクト/
+ ├── Issuer.exe          # 実行ファイル（ここから起動）
+ ├── data.db             # マスターDB（全員のデータが統合された正本）
+ ├── app.lock            # 排他制御用ロックファイル
+ └── .sync_temp/         # 隠しフォルダ（差分JSONの一時置き場）
+      ├── 1708473820_PC1_a1b2c3d4.json
+      ├── 1708473825_PC2_e5f6g7h8.json
+      └── ...
+
+📁 %LOCALAPPDATA%\Issuer/
+ ├── Issuer.exe          # ローカルコピー（実際に動作するプロセス）
+ ├── data.db             # ローカルDB（読み書き対象）
+ ├── settings.json       # ユーザー設定（表示名など）
+ ├── issuer_version.txt  # バージョン管理マーカー
+ └── local_copy.marker   # ローカルコピー識別用
+```
+
+### 動作フロー
+
+1. **起動時 (Pull & Copy)** — 共有フォルダの `data.db` をローカルPCにコピー。以降は全てローカルDBに対して読み書き
+2. **編集時 (Local Update & Push Delta)** — ローカルDBを即座に更新 → 変更内容をJSON差分ファイルとして共有フォルダの `.sync_temp/` に書き出し
+3. **待機中 (Background Auto-Sync)** — 3秒間隔で `.sync_temp/` を監視し、他ユーザーの差分を検出 → ローカルDBに適用 → 画面を自動リフレッシュ
+4. **終了時 (Snapshot & Cleanup)** — ロック取得 → `data.db` をローカルにコピー → 全JSONをローカルでマージ → マスターDBに上書きコピー → JSON削除 → ロック解放
+
+### 競合解決
+
+- **Last Write Wins (LWW)** — 同じレコードへの同時編集は、タイムスタンプが後の変更が優先される
+- **論理削除** — Issue・コメント・マイルストーンは `is_deleted` フラグによる論理削除。物理DELETEは行わない
+- **排他制御** — ハートビート監視付きロックファイルにより、マスターDB更新の競合を防止
+
+## 技術スタック
+
+| レイヤー | 技術 |
+|---|---|
+| デスクトップフレームワーク | Tauri v2 |
+| フロントエンド | React 19, TypeScript, Tailwind CSS 4, Vite 7 |
+| バックエンド | Rust |
+| データベース | SQLite (rusqlite, WAL mode) |
+| 同期方式 | JSON差分ファイルによるデルタ同期 |
+
+## 開発
+
+### 前提条件
+
+- [Node.js](https://nodejs.org/) (v18以上)
+- [Rust](https://www.rust-lang.org/tools/install) (stable)
+- [Tauri CLI](https://v2.tauri.app/start/prerequisites/)
+
+### セットアップ
 
 ```bash
-uv sync
+npm install
 ```
 
-## 起動
+### 開発サーバー起動
 
 ```bash
-uv run python main.py
+npx tauri dev
 ```
 
-## ファイル構成
+> **注意:** `cargo build` だけではフロントエンドがビルドされません。必ず `npx tauri dev` を使用してください。
 
-```
-issue_manager/
-├── main.py           # 起動エントリーポイント
-├── app/              # アプリケーションパッケージ
-│   ├── ui.py             # メイン UI・ルーティング
-│   ├── db.py             # DB 操作
-│   ├── config.py         # 設定・定数
-│   └── utils/
-│       ├── lock.py           # 排他制御
-│       └── attachments.py    # 画像添付
-├── pyproject.toml
-└── README.md
-```
-
-初回起動時に同じフォルダへ自動生成:
-```
-data.db      # SQLite データベース
-app.lock     # ロックファイル（使用中のみ存在）
-assets/      # 添付画像フォルダ
-```
-
-## ビルド（Windows 配布用 .exe）
+### プロダクションビルド
 
 ```bash
-# Flet 0.21 以上
-flet pack main.py --name "IssueManager"
-
-# Flet 0.21 未満
-pyinstaller --onefile --windowed --name "IssueManager" main.py
+npx tauri build
 ```
 
-## 共有フォルダ運用
+ビルド成果物は `src-tauri/target/release/` に生成されます。
 
-生成された `IssueManager.exe` と `data.db`・`assets/` を共有フォルダに配置して、  
-チームメンバーが exe を直接起動するだけで使用できます。
+## 利用方法
 
-- 編集モード: 最初に起動した 1 人のみ
-- 閲覧専用モード: 2 人目以降（誰が編集中か AppBar に表示）
-- ゾンビロック解除: 1 時間以上前のロックは起動時に強制解除ダイアログが表示
+1. ビルドした `Issuer.exe` を共有フォルダの任意のプロジェクトフォルダに配置
+2. 共有フォルダから `Issuer.exe` を起動（自動的にローカルへコピーされて実行）
+3. 初回起動時に表示名の登録ダイアログが表示される（スキップ可。Windowsユーザー名が使用される）
+4. 複数人が同じフォルダの `Issuer.exe` を起動すれば、自動同期で共同作業可能
 
-## 制限事項
+## ライセンス
 
-- 同時に編集できるのは 1 人のみ
-- データベースは暗号化なし（機密情報は書き込まないこと）
-- 数千件を超えると起動が遅くなる可能性あり
+Private
