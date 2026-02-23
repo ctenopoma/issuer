@@ -15,6 +15,9 @@ const cheatSheetContent = `
 
 ~~取り消し線~~: \`~~取り消し線~~\`
 
+#### Issue IDのリンク
+\`#123\`
+
 #### リスト
 \`
 - アイテム 1
@@ -36,7 +39,7 @@ const cheatSheetContent = `
 
 ---
 
-### 🎨 Zennスタイルの拡張記法
+### 🎨 拡張記法
 
 #### メッセージブロック
 \`\`\`markdown

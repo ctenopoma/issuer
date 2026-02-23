@@ -1,8 +1,8 @@
+use crate::config::AppConfig;
 use std::env;
 use std::fs;
 use std::io::{Read, Write};
 use std::process::Command;
-use crate::config::AppConfig;
 
 fn parse_version(s: &str) -> Vec<u64> {
     s.split('.')
@@ -10,7 +10,7 @@ fn parse_version(s: &str) -> Vec<u64> {
         .collect()
 }
 
-fn version_ge(a: &str, b: &str) -> bool {
+fn version_gt(a: &str, b: &str) -> bool {
     let va = parse_version(a);
     let vb = parse_version(b);
     let n = va.len().max(vb.len());
@@ -23,7 +23,7 @@ fn version_ge(a: &str, b: &str) -> bool {
             return false;
         }
     }
-    true
+    false
 }
 
 pub fn ensure_local_execution(config: &AppConfig) -> bool {
@@ -54,8 +54,8 @@ pub fn ensure_local_execution(config: &AppConfig) -> bool {
             let mut buf = String::new();
             if f.read_to_string(&mut buf).is_ok() {
                 let local_ver = buf.trim();
-                if !local_ver.is_empty() && version_ge(local_ver, current_version) {
-                    // local is same or newer; no copy needed
+                if !local_ver.is_empty() && version_gt(local_ver, current_version) {
+                    // local is newer; no copy needed
                     need_copy = false;
                 }
             }
@@ -63,8 +63,17 @@ pub fn ensure_local_execution(config: &AppConfig) -> bool {
 
         // 2) Fallback: existing size & mtime heuristic (previous behavior)
         if need_copy {
-            if let (Ok(src_meta), Ok(dst_meta)) = (fs::metadata(&current_exe), fs::metadata(&local_exe)) {
-                if src_meta.len() == dst_meta.len() && src_meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH) <= dst_meta.modified().unwrap_or(std::time::SystemTime::UNIX_EPOCH) {
+            if let (Ok(src_meta), Ok(dst_meta)) =
+                (fs::metadata(&current_exe), fs::metadata(&local_exe))
+            {
+                if src_meta.len() == dst_meta.len()
+                    && src_meta
+                        .modified()
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                        <= dst_meta
+                            .modified()
+                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                {
                     need_copy = false;
                 }
             }
@@ -75,7 +84,8 @@ pub fn ensure_local_execution(config: &AppConfig) -> bool {
         if let Ok(_) = fs::create_dir_all(&config.local_dir) {
             if let Ok(_) = fs::copy(&current_exe, &local_exe) {
                 // After successful copy, write version marker so subsequent runs can compare
-                let _ = fs::File::create(&local_version_file).and_then(|mut f| f.write_all(current_version.as_bytes()));
+                let _ = fs::File::create(&local_version_file)
+                    .and_then(|mut f| f.write_all(current_version.as_bytes()));
                 // Also create a marker file indicating this directory contains a local copy
                 let marker = config.local_dir.join("local_copy.marker");
                 let _ = fs::File::create(&marker);
@@ -99,7 +109,7 @@ pub fn ensure_local_execution(config: &AppConfig) -> bool {
         .env("ISSUER_ORIGINAL_DIR", &config.original_dir)
         .env("ISSUER_VERSION", current_version)
         .spawn();
-        
+
     if status.is_err() {
         return false;
     }
