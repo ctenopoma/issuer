@@ -31,10 +31,8 @@ pub fn get_comments(issue_id: i32, state: State<'_, AppState>) -> Result<Vec<Com
         .map_err(|e| e.to_string())?;
 
     let mut comments = Vec::new();
-    for c in iter {
-        if let Ok(comment) = c {
-            comments.push(comment);
-        }
+    for comment in iter.flatten() {
+        comments.push(comment);
     }
 
     Ok(comments)

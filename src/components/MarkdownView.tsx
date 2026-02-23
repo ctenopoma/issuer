@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { convertFileSrc } from '@tauri-apps/api/core';
+import { api } from '../lib/api';
 
 interface Props {
     content: string;
@@ -82,8 +85,53 @@ function linkify(text: string): string {
     return result;
 }
 
+// Cache the assets directory path
+let cachedAssetsDir: string | null = null;
+
+/**
+ * Convert all image paths in markdown to asset protocol URLs
+ * before the markdown parser can mangle backslashes as escape sequences.
+ * Handles:
+ *   ![alt](C:\path\to\file.png)      — absolute Windows backslash
+ *   ![alt](C:/path/to/file.png)      — absolute Windows forward slash
+ *   ![alt](assets/file.png)          — legacy relative path
+ *   ![alt](https://asset.localhost/…) — already converted (skip)
+ */
+function resolveImageUrls(text: string, assetsDir: string | null): string {
+    if (!text) return text;
+    return text.replace(
+        /!\[([^\]]*)\]\(([^)]+)\)/g,
+        (match, alt, rawPath) => {
+            const path = rawPath.replace(/\\/g, '/');
+            if (path.match(/^https?:\/\//) || path.startsWith('data:')) {
+                return match; // already a URL, skip
+            }
+            if (path.match(/^[A-Za-z]:\//)) {
+                // Absolute Windows path
+                return `![${alt}](${convertFileSrc(path)})`;
+            }
+            if (path.startsWith('assets/') && assetsDir) {
+                // Legacy relative path
+                const filename = path.replace('assets/', '');
+                return `![${alt}](${convertFileSrc(assetsDir + '/' + filename)})`;
+            }
+            return match;
+        }
+    );
+}
+
 export default function MarkdownView({ content, onNavigateToIssue }: Props) {
-    const processedContent = linkify(content || '');
+    const [assetsDir, setAssetsDir] = useState<string | null>(cachedAssetsDir);
+    const processedContent = linkify(resolveImageUrls(content || '', assetsDir));
+
+    useEffect(() => {
+        if (!cachedAssetsDir) {
+            api.getAssetsDir().then(dir => {
+                cachedAssetsDir = dir;
+                setAssetsDir(dir);
+            }).catch(() => {});
+        }
+    }, []);
 
     return (
         <ReactMarkdown
@@ -136,18 +184,13 @@ export default function MarkdownView({ content, onNavigateToIssue }: Props) {
                         </a>
                     );
                 },
-                img({ src, alt, ...props }) {
-                    // Handle relative asset paths
-                    const resolvedSrc = src && src.startsWith('assets/')
-                        ? src // Tauri serves assets from the app directory
-                        : src;
+                img({ src, alt }) {
                     return (
                         <img
-                            src={resolvedSrc}
+                            src={src || ''}
                             alt={alt || ''}
                             className="max-w-full rounded-md border border-brand-border my-2"
                             loading="lazy"
-                            {...props}
                         />
                     );
                 },

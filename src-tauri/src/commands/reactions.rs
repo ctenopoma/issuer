@@ -51,10 +51,8 @@ pub fn get_issue_reactions(
         .map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();
-    for entry in iter {
-        if let Ok(e) = entry {
-            results.push(e);
-        }
+    for e in iter.flatten() {
+        results.push(e);
     }
     Ok(results)
 }
@@ -143,10 +141,8 @@ pub fn get_comment_reactions(
 
     let mut map: std::collections::HashMap<i32, Vec<ReactionEntry>> =
         std::collections::HashMap::new();
-    for entry in iter {
-        if let Ok((comment_id, reaction_entry)) = entry {
-            map.entry(comment_id).or_default().push(reaction_entry);
-        }
+    for (comment_id, reaction_entry) in iter.flatten() {
+        map.entry(comment_id).or_default().push(reaction_entry);
     }
 
     let results: Vec<ReactionSummary> = map

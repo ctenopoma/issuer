@@ -2,13 +2,22 @@ import { Issue, Comment, Milestone, ReactionEntry, ReactionSummary, MilestonePro
 
 // Detect if we're running inside Tauri
 const isTauri = !!(window as any).__TAURI_INTERNALS__;
+console.log('[Issuer] isTauri =', isTauri);
 
 // Dynamic import for tauri invoke - only if available
 let invoke: any;
 if (isTauri) {
     invoke = async (cmd: string, args?: any) => {
-        const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
-        return tauriInvoke(cmd, args);
+        console.log(`[Issuer] invoke: ${cmd}`, JSON.stringify(args));
+        try {
+            const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+            const result = await tauriInvoke(cmd, args);
+            console.log(`[Issuer] invoke OK: ${cmd}`, result);
+            return result;
+        } catch (e) {
+            console.error(`[Issuer] invoke FAIL: ${cmd}`, e);
+            throw e;
+        }
     };
 } else {
     // Browser mock for development preview
@@ -75,22 +84,23 @@ export const api = {
     getIssues: () => invoke('get_issues') as Promise<Issue[]>,
     getIssue: (id: number) => invoke('get_issue', { id }) as Promise<Issue>,
     createIssue: (title: string, body: string, createdBy: string, assignee: string) =>
-        invoke('create_issue', { title, body, created_by: createdBy, assignee }) as Promise<number>,
+        invoke('create_issue', { title, body, createdBy, assignee }) as Promise<number>,
     updateIssue: (id: number, title: string, body: string, status: string, assignee: string, milestoneId: number | null) =>
-        invoke('update_issue', { id, title, body, status, assignee, milestone_id: milestoneId }) as Promise<void>,
+        invoke('update_issue', { id, title, body, status, assignee, milestoneId }) as Promise<void>,
     deleteIssue: (id: number) =>
         invoke('delete_issue', { id }) as Promise<void>,
 
     // Comments
-    getComments: (issueId: number) => invoke('get_comments', { issue_id: issueId }) as Promise<Comment[]>,
+    getComments: (issueId: number) => invoke('get_comments', { issueId }) as Promise<Comment[]>,
     createComment: (issueId: number, body: string, createdBy: string) =>
-        invoke('create_comment', { issue_id: issueId, body, created_by: createdBy }) as Promise<number>,
+        invoke('create_comment', { issueId, body, createdBy }) as Promise<number>,
     updateComment: (id: number, body: string) =>
         invoke('update_comment', { id, body }) as Promise<void>,
     deleteComment: (id: number) =>
         invoke('delete_comment', { id }) as Promise<void>,
 
     // Attachments & Outlook
+    getAssetsDir: () => invoke('get_assets_dir') as Promise<string>,
     pasteImage: () => invoke('paste_image') as Promise<string>,
     openOutlook: (to: string, subject: string, body: string) =>
         invoke('create_outlook_draft', { to, subject, body }) as Promise<void>,
@@ -98,9 +108,9 @@ export const api = {
     // Milestones
     getMilestones: () => invoke('get_milestones') as Promise<Milestone[]>,
     createMilestone: (title: string, description: string, startDate: string | null, dueDate: string | null) =>
-        invoke('create_milestone', { title, description, start_date: startDate, due_date: dueDate }) as Promise<number>,
+        invoke('create_milestone', { title, description, startDate, dueDate }) as Promise<number>,
     updateMilestone: (id: number, title: string, description: string, startDate: string | null, dueDate: string | null, status: string) =>
-        invoke('update_milestone', { id, title, description, start_date: startDate, due_date: dueDate, status }) as Promise<void>,
+        invoke('update_milestone', { id, title, description, startDate, dueDate, status }) as Promise<void>,
     deleteMilestone: (id: number) =>
         invoke('delete_milestone', { id }) as Promise<void>,
     getMilestoneProgress: () =>
@@ -108,25 +118,25 @@ export const api = {
 
     // Reactions
     getIssueReactions: (issueId: number, currentUser: string) =>
-        invoke('get_issue_reactions', { issue_id: issueId, current_user: currentUser }) as Promise<ReactionEntry[]>,
+        invoke('get_issue_reactions', { issueId, currentUser }) as Promise<ReactionEntry[]>,
     toggleIssueReaction: (issueId: number, reaction: string, currentUser: string) =>
-        invoke('toggle_issue_reaction', { issue_id: issueId, reaction, current_user: currentUser }) as Promise<void>,
+        invoke('toggle_issue_reaction', { issueId, reaction, currentUser }) as Promise<void>,
     getCommentReactions: (issueId: number, currentUser: string) =>
-        invoke('get_comment_reactions', { issue_id: issueId, current_user: currentUser }) as Promise<ReactionSummary[]>,
+        invoke('get_comment_reactions', { issueId, currentUser }) as Promise<ReactionSummary[]>,
     toggleCommentReaction: (commentId: number, reaction: string, currentUser: string) =>
-        invoke('toggle_comment_reaction', { comment_id: commentId, reaction, current_user: currentUser }) as Promise<void>,
+        invoke('toggle_comment_reaction', { commentId, reaction, currentUser }) as Promise<void>,
 
     // Labels
     listAllLabels: () => invoke('list_all_labels') as Promise<string[]>,
     getIssueLabels: (issueId: number) =>
-        invoke('get_issue_labels', { issue_id: issueId }) as Promise<string[]>,
+        invoke('get_issue_labels', { issueId }) as Promise<string[]>,
     getLabelsMap: (issueIds: number[]) =>
-        invoke('get_labels_map', { issue_ids: issueIds }) as Promise<[number, string[]][]>,
+        invoke('get_labels_map', { issueIds }) as Promise<[number, string[]][]>,
     setIssueLabels: (issueId: number, labels: string[]) =>
-        invoke('set_issue_labels', { issue_id: issueId, labels }) as Promise<void>,
+        invoke('set_issue_labels', { issueId, labels }) as Promise<void>,
 
     // Lock
-    getLockInfo: () => invoke('get_lock_info') as Promise<{ mode: string; locked_by: string | null; current_user: string }>,
+    getLockInfo: () => invoke('get_lock_info') as Promise<{ mode: string; locked_by: string | null; current_user: string; display_name: string }>,
     updateHeartbeat: () => invoke('update_heartbeat') as Promise<void>,
     forceAcquireLock: () => invoke('force_acquire_lock') as Promise<void>,
 };

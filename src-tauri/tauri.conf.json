@@ -5,20 +5,24 @@
   "identifier": "com.naoki.issuer",
   "build": {
     "beforeDevCommand": "npm.cmd run dev",
+    "beforeBuildCommand": "npm.cmd run build",
     "devUrl": "http://localhost:1420",
-    "beforeDevCommand": "npm.cmd run build",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "Issue管理画面",
+        "title": "Issuer",
         "width": 1100,
         "height": 750
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["**"]
+      }
     }
   },
   "bundle": {

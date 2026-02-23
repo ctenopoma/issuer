@@ -6,9 +6,10 @@ import Editor from './Editor';
 interface Props {
     onCancel: () => void;
     onCreated: (id: number) => void;
+    currentUser: string;
 }
 
-export default function NewIssue({ onCancel, onCreated }: Props) {
+export default function NewIssue({ onCancel, onCreated, currentUser }: Props) {
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [assignee, setAssignee] = useState('');
@@ -26,7 +27,7 @@ export default function NewIssue({ onCancel, onCreated }: Props) {
 
         setIsSubmitting(true);
         try {
-            const id = await api.createIssue(title, body, "Self", assignee);
+            const id = await api.createIssue(title, body, currentUser, assignee);
 
             // Set labels if provided
             const labels = labelsText.split(',').map(l => l.trim()).filter(Boolean);
@@ -40,9 +41,10 @@ export default function NewIssue({ onCancel, onCreated }: Props) {
             }
 
             onCreated(id);
-        } catch (e) {
-            console.error(e);
-            alert("Issue の作成に失敗しました。");
+        } catch (e: any) {
+            console.error('create_issue error:', e);
+            const msg = typeof e === 'string' ? e : e?.message || JSON.stringify(e);
+            alert("Issue の作成に失敗しました。\n\nエラー: " + msg);
         } finally {
             setIsSubmitting(false);
         }

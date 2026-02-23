@@ -39,10 +39,8 @@ pub fn get_issues(state: State<'_, AppState>) -> Result<Vec<Issue>, String> {
         .map_err(|e| e.to_string())?;
 
     let mut issues = Vec::new();
-    for issue in iter {
-        if let Ok(i) = issue {
-            issues.push(i);
-        }
+    for i in iter.flatten() {
+        issues.push(i);
     }
 
     Ok(issues)
@@ -80,15 +78,24 @@ pub fn create_issue(
     assignee: String,
     state: State<'_, AppState>,
 ) -> Result<i32, String> {
-    let conn = state.db.lock().map_err(|e| e.to_string())?;
+    crate::debug_log::log(&format!("[create_issue] called: title={}, created_by={}, assignee={}", title, created_by, assignee));
+    let conn = state.db.lock().map_err(|e| {
+        crate::debug_log::log(&format!("[create_issue] db lock error: {}", e));
+        e.to_string()
+    })?;
     let now = chrono::Local::now().to_rfc3339();
 
     conn.execute(
         "INSERT INTO issues (title, body, status, created_by, assignee, created_at, updated_at) VALUES (?1, ?2, 'OPEN', ?3, ?4, ?5, ?5)",
         rusqlite::params![title, body, created_by, assignee, now],
-    ).map_err(|e| e.to_string())?;
+    ).map_err(|e| {
+        crate::debug_log::log(&format!("[create_issue] SQL error: {}", e));
+        e.to_string()
+    })?;
 
-    Ok(conn.last_insert_rowid() as i32)
+    let id = conn.last_insert_rowid() as i32;
+    crate::debug_log::log(&format!("[create_issue] success: id={}", id));
+    Ok(id)
 }
 
 #[tauri::command]

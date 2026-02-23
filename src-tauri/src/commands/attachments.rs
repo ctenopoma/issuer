@@ -6,6 +6,12 @@ use tauri::State;
 use crate::AppState;
 
 #[tauri::command]
+pub fn get_assets_dir(state: State<'_, AppState>) -> Result<String, String> {
+    let assets_dir = state.config.original_dir.join("assets");
+    Ok(assets_dir.to_string_lossy().replace('\\', "/"))
+}
+
+#[tauri::command]
 pub fn paste_image(state: State<'_, AppState>) -> Result<String, String> {
     let mut clipboard = Clipboard::new().map_err(|e| e.to_string())?;
     let image = clipboard.get_image().map_err(|e| format!("No image in clipboard: {}", e))?;
@@ -28,5 +34,5 @@ pub fn paste_image(state: State<'_, AppState>) -> Result<String, String> {
     
     img_buffer.save(&file_path).map_err(|e| e.to_string())?;
     
-    Ok(format!("assets/{}", file_name))
+    Ok(file_path.to_string_lossy().replace('\\', "/"))
 }

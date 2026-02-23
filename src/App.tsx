@@ -16,6 +16,7 @@ export default function App() {
   const [selectedIssueId, setSelectedIssueId] = useState<number | null>(null);
   const [lockMode, setLockMode] = useState<LockMode>('loading');
   const [lockedBy, setLockedBy] = useState<string | null>(null);
+  const [currentUser, setCurrentUser] = useState<string>('');
   const [showZombieDialog, setShowZombieDialog] = useState(false);
   const [savedFilter, setSavedFilter] = useState<FilterState | null>(null);
   const viewRef = useRef(currentView);
@@ -33,6 +34,7 @@ export default function App() {
     const checkLock = async () => {
       try {
         const info = await api.getLockInfo();
+        setCurrentUser(info.display_name || info.current_user);
         setLockedBy(info.locked_by);
         if (info.mode === 'zombie') {
           setLockMode('zombie');
@@ -169,6 +171,14 @@ export default function App() {
         </h1>
         <div className="flex items-center gap-4">
           {lockIndicator()}
+          {currentUser && (
+            <span className="text-sm text-brand-text-muted flex items-center gap-1.5">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              {currentUser}
+            </span>
+          )}
         </div>
       </header>
 
@@ -197,12 +207,14 @@ export default function App() {
             issueId={selectedIssueId}
             onBack={() => navigateTo('LIST')}
             onNavigateToIssue={(id) => navigateTo('DETAIL', id)}
+            currentUser={currentUser}
           />
         )}
         {currentView === 'NEW' && (
           <NewIssue
             onCancel={() => navigateTo('LIST')}
             onCreated={(id) => navigateTo('DETAIL', id)}
+            currentUser={currentUser}
           />
         )}
         {currentView === 'MILESTONE' && (

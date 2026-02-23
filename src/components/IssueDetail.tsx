@@ -9,15 +9,15 @@ interface Props {
     issueId: number;
     onBack: () => void;
     onNavigateToIssue?: (id: number) => void;
+    currentUser: string;
 }
 
-export default function IssueDetail({ issueId, onBack, onNavigateToIssue }: Props) {
+export default function IssueDetail({ issueId, onBack, onNavigateToIssue, currentUser }: Props) {
     const [issue, setIssue] = useState<Issue | null>(null);
     const [comments, setComments] = useState<Comment[]>([]);
     const [loading, setLoading] = useState(true);
     const [newComment, setNewComment] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [currentUser] = useState('Self');
 
     // Edit issue state
     const [isEditing, setIsEditing] = useState(false);
@@ -176,11 +176,29 @@ export default function IssueDetail({ issueId, onBack, onNavigateToIssue }: Prop
 
     const handleShareOutlook = async () => {
         if (!issue) return;
+
+        const milestoneTitle = issue.milestone_id
+            ? milestones.find(m => m.id === issue.milestone_id)?.title
+            : null;
+
+        const bodyLines = [
+            `Link: #issue-${issue.id}`,
+            "",
+            `Title: ${issue.title}`,
+            `Status: ${issue.status}`,
+            `Assignee: ${issue.assignee || "未設定"}`,
+            `Milestone: ${milestoneTitle || "なし"}`,
+            "",
+            "---",
+            "本文:",
+            issue.body || "(本文なし)",
+        ];
+
         try {
             await api.openOutlook(
                 "",
                 `[Issue #${issue.id}] ${issue.title}`,
-                `Link: #issue-${issue.id}\n\n${issue.body}`
+                bodyLines.join("\n")
             );
         } catch (e) {
             console.error(e);
@@ -229,35 +247,37 @@ export default function IssueDetail({ issueId, onBack, onNavigateToIssue }: Prop
 
     return (
         <div className="flex flex-col gap-4">
-            {/* Header */}
-            <div className="flex items-center gap-2 mb-2">
-                <button onClick={onBack} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-brand-text-main" title="一覧に戻る">
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
-                    </svg>
-                </button>
-                {isEditing ? (
-                    <input
-                        type="text"
-                        value={editTitle}
-                        onChange={(e) => setEditTitle(e.target.value)}
-                        className="flex-1 text-[22px] font-bold bg-brand-bg border-none rounded-md py-1 px-2 focus:ring-2 focus:ring-brand-primary"
-                    />
-                ) : (
-                    <div className="text-[22px] font-bold text-brand-text-main flex-1 truncate">
-                        {issue.title} <span className="text-brand-text-muted font-normal ml-2">#{issue.id}</span>
-                    </div>
-                )}
-                <button onClick={onBack} className="flex items-center gap-1 text-brand-primary px-3 py-1.5 rounded-md hover:bg-blue-50 transition text-sm font-medium">
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-                    </svg>
-                    一覧へ
-                </button>
-            </div>
+            {/* Sticky Header */}
+            <div className="sticky top-0 z-10 bg-brand-bg pb-2 -mx-6 px-6 pt-2">
+                {/* Title row */}
+                <div className="flex items-center gap-2 mb-2">
+                    <button onClick={onBack} className="p-2 hover:bg-gray-200 rounded-full transition-colors text-brand-text-main" title="一覧に戻る">
+                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </button>
+                    {isEditing ? (
+                        <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            className="flex-1 text-[22px] font-bold bg-brand-bg border-none rounded-md py-1 px-2 focus:ring-2 focus:ring-brand-primary"
+                        />
+                    ) : (
+                        <div className="text-[22px] font-bold text-brand-text-main flex-1 truncate">
+                            {issue.title} <span className="text-brand-text-muted font-normal ml-2">#{issue.id}</span>
+                        </div>
+                    )}
+                    <button onClick={onBack} className="flex items-center gap-1 text-brand-primary px-3 py-1.5 rounded-md hover:bg-blue-50 transition text-sm font-medium">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+                        </svg>
+                        一覧へ
+                    </button>
+                </div>
 
-            {/* Meta tags */}
-            <div className="flex items-center gap-2 mb-4 text-[13px] border-b border-brand-border pb-4 flex-wrap">
+                {/* Meta tags */}
+                <div className="flex items-center gap-2 text-[13px] border-b border-brand-border pb-3 flex-wrap">
                 <span className={`px-3 py-1 rounded-full font-bold text-white flex items-center gap-1 ${issue.status === 'OPEN' ? 'bg-brand-open' : 'bg-brand-closed'}`}>
                     {issue.status === 'OPEN' ? (
                         <div className="w-3 h-3 rounded-full border-[2px] border-current"></div>
@@ -335,6 +355,7 @@ export default function IssueDetail({ issueId, onBack, onNavigateToIssue }: Prop
                 >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                 </button>
+                </div>
             </div>
 
             {/* Issue Body (or edit form) */}

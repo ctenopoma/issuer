@@ -24,26 +24,31 @@ pub struct LockInfo {
     pub mode: String, // "edit" | "readonly" | "zombie"
     pub locked_by: Option<String>,
     pub current_user: String,
+    pub display_name: String,
 }
 
 impl LockInfo {
     pub fn from_status(status: &LockStatus) -> Self {
         let current_user = whoami::username();
+        let display_name = whoami::realname();
         match status {
             LockStatus::Edit => LockInfo {
                 mode: "edit".into(),
                 locked_by: None,
                 current_user,
+                display_name,
             },
             LockStatus::ReadOnly(u) => LockInfo {
                 mode: "readonly".into(),
                 locked_by: Some(u.clone()),
                 current_user,
+                display_name,
             },
             LockStatus::Zombie(u) => LockInfo {
                 mode: "zombie".into(),
                 locked_by: Some(u.clone()),
                 current_user,
+                display_name,
             },
         }
     }

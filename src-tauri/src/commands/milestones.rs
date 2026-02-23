@@ -37,10 +37,8 @@ pub fn get_milestones(state: State<'_, AppState>) -> Result<Vec<Milestone>, Stri
         .map_err(|e| e.to_string())?;
 
     let mut items = Vec::new();
-    for item in iter {
-        if let Ok(i) = item {
-            items.push(i);
-        }
+    for i in iter.flatten() {
+        items.push(i);
     }
 
     Ok(items)
@@ -147,10 +145,8 @@ pub fn get_milestone_progress(
         .map_err(|e| e.to_string())?;
 
     let mut results = Vec::new();
-    for entry in iter {
-        if let Ok(p) = entry {
-            results.push(p);
-        }
+    for p in iter.flatten() {
+        results.push(p);
     }
     Ok(results)
 }

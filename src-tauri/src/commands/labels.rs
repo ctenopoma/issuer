@@ -18,10 +18,8 @@ pub fn list_all_labels(state: State<'_, AppState>) -> Result<Vec<String>, String
         .query_map([], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
     let mut labels = Vec::new();
-    for label in iter {
-        if let Ok(l) = label {
-            labels.push(l);
-        }
+    for l in iter.flatten() {
+        labels.push(l);
     }
     Ok(labels)
 }
@@ -41,10 +39,8 @@ pub fn get_issue_labels(issue_id: i32, state: State<'_, AppState>) -> Result<Vec
         .query_map(rusqlite::params![issue_id], |row| row.get::<_, String>(0))
         .map_err(|e| e.to_string())?;
     let mut labels = Vec::new();
-    for label in iter {
-        if let Ok(l) = label {
-            labels.push(l);
-        }
+    for l in iter.flatten() {
+        labels.push(l);
     }
     Ok(labels)
 }
@@ -81,10 +77,8 @@ pub fn get_labels_map(
         .map_err(|e| e.to_string())?;
 
     let mut map: std::collections::HashMap<i32, Vec<String>> = std::collections::HashMap::new();
-    for entry in iter {
-        if let Ok((issue_id, label)) = entry {
-            map.entry(issue_id).or_default().push(label);
-        }
+    for (issue_id, label) in iter.flatten() {
+        map.entry(issue_id).or_default().push(label);
     }
     Ok(map.into_iter().collect())
 }

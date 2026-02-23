@@ -76,10 +76,8 @@ pub fn establish_connection<P: AsRef<Path>>(db_path: P) -> rusqlite::Result<Conn
 
     // Add milestone_id column if missing (migration for older databases)
     let columns: Vec<String> = conn
-        .prepare("PRAGMA table_info(issues)")
-        .map_err(|e| e)?
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|e| e)?
+        .prepare("PRAGMA table_info(issues)")?
+        .query_map([], |row| row.get::<_, String>(1))?
         .filter_map(|r| r.ok())
         .collect();
     if !columns.iter().any(|c| c == "milestone_id") {

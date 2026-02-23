@@ -3,6 +3,7 @@ mod config;
 pub mod db;
 pub mod lock;
 mod relaunch;
+pub mod debug_log;
 
 use std::sync::Mutex;
 use tauri::Manager;
@@ -17,6 +18,8 @@ pub struct AppState {
 pub fn run() {
     let app_config = config::AppConfig::new();
 
+    debug_log::log(&format!("App starting. db_path={:?}, is_local_relaunch={}", app_config.db_path, app_config.is_local_relaunch));
+
     // 1. Local relaunch check
     if relaunch::ensure_local_execution(&app_config) {
         std::process::exit(0);
@@ -24,10 +27,12 @@ pub fn run() {
 
     // 2. Lock check
     let lock_status = lock::check_lock_on_startup(&app_config);
+    debug_log::log(&format!("Lock status: {:?}", lock_status));
 
     // 3. Database connection
     let db_conn =
         db::establish_connection(&app_config.db_path).expect("Failed to connect to database");
+    debug_log::log("Database connection established");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -60,6 +65,7 @@ pub fn run() {
             commands::comments::update_comment,
             commands::comments::delete_comment,
             commands::attachments::paste_image,
+            commands::attachments::get_assets_dir,
             commands::outlook::create_outlook_draft,
             commands::milestones::get_milestones,
             commands::milestones::create_milestone,
