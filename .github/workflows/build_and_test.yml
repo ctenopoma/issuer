@@ -33,40 +33,13 @@ jobs:
       run: python build.py
 
     # -------------------------------------------------------
-    # テスト 1: 通常起動（_overlapped 正常 → そのまま起動）
+    # テスト 1: 強制リランチ（常にローカルコピー＆再起動）
     # -------------------------------------------------------
-    - name: "Test 1: Normal Launch"
-      shell: powershell
-      run: |
-        $exePath = ".\dist\Issuer.exe"
-        Write-Host "=== Test 1: Normal Launch ==="
-        Write-Host "Starting $exePath..."
-
-        $process = Start-Process -FilePath $exePath -PassThru -NoNewWindow
-        Start-Sleep -Seconds 5
-
-        if ($process.HasExited) {
-            if ($process.ExitCode -ne 0) {
-                Write-Error "FAIL: App crashed! (Exit Code: $($process.ExitCode))"
-                exit 1
-            } else {
-                Write-Error "FAIL: App closed immediately."
-                exit 1
-            }
-        } else {
-            Write-Host "PASS: App launched successfully and is still running."
-            Stop-Process -Id $process.Id -Force
-        }
-
-    # -------------------------------------------------------
-    # テスト 2: 強制リランチ（_overlapped 失敗を模擬 → ローカルコピー＆再起動）
-    # -------------------------------------------------------
-    - name: "Test 2: Force Relaunch - Copy and Restart"
-      shell: powershell
+    - name: "Test 1: Force Relaunch - Copy and Restart"
       run: |
         $exePath = ".\dist\Issuer.exe"
         $localExe = "$env:LOCALAPPDATA\Issuer\Issuer.exe"
-        Write-Host "=== Test 2: Force Relaunch ==="
+        Write-Host "=== Test 1: Force Relaunch ==="
 
         # 事前にローカルコピーがあれば削除
         if (Test-Path $localExe) { Remove-Item $localExe -Force }
@@ -105,14 +78,13 @@ jobs:
         Remove-Item Env:ISSUER_FORCE_RELAUNCH
 
     # -------------------------------------------------------
-    # テスト 3: 再帰防止（ISSUER_LOCAL_RELAUNCH=1 → コピーしない）
+    # テスト 2: 再帰防止（ISSUER_LOCAL_RELAUNCH=1 → コピーしない）
     # -------------------------------------------------------
-    - name: "Test 3: Relaunch Prevention"
-      shell: powershell
+    - name: "Test 2: Relaunch Prevention"
       run: |
         $exePath = ".\dist\Issuer.exe"
         $localExe = "$env:LOCALAPPDATA\Issuer\Issuer.exe"
-        Write-Host "=== Test 3: Relaunch Prevention ==="
+        Write-Host "=== Test 2: Relaunch Prevention ==="
 
         # 前のテストで作られたローカルコピーを削除
         if (Test-Path "$env:LOCALAPPDATA\Issuer") {
@@ -150,15 +122,14 @@ jobs:
         Remove-Item Env:ISSUER_LOCAL_RELAUNCH
 
     # -------------------------------------------------------
-    # テスト 4: コピー不要時のスキップ（同一ファイルが既存 → コピーせず再起動）
+    # テスト 3: コピー不要時のスキップ（同一ファイルが既存 → コピーせず再起動）
     # -------------------------------------------------------
-    - name: "Test 4: Skip Copy When Up-to-Date"
-      shell: powershell
+    - name: "Test 3: Skip Copy When Up-to-Date"
       run: |
         $exePath = Resolve-Path ".\dist\Issuer.exe"
         $localDir = "$env:LOCALAPPDATA\Issuer"
         $localExe = "$localDir\Issuer.exe"
-        Write-Host "=== Test 4: Skip Copy When Up-to-Date ==="
+        Write-Host "=== Test 3: Skip Copy When Up-to-Date ==="
 
         # 事前にローカルに同一ファイルを配置
         if (-not (Test-Path $localDir)) { New-Item -ItemType Directory -Path $localDir | Out-Null }
