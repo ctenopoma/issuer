@@ -286,6 +286,17 @@ def main(page: ft.Page):
         """Windows 低レベルマウスフックで XButton1 を検出する。"""
         nonlocal _mouse_hook_id, _mouse_hook_thread_id
 
+        # CI 環境や GitHub Actions のランナーではネイティブなフックが不安定
+        # でクラッシュすることがあるため、環境変数でスキップする。
+        if os.environ.get("CI") or os.environ.get("GITHUB_ACTIONS"):
+            logger.info("Skipping mouse back button hook in CI environment")
+            return
+
+        # safety: ensure running on Windows
+        if sys.platform != "win32":
+            logger.info("Mouse hook is only supported on Windows; skipping")
+            return
+
         WH_MOUSE_LL = 14
         WM_XBUTTONDOWN = 0x020B
         XBUTTON1 = 0x0001
