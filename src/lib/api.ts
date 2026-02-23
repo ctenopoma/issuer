@@ -1,4 +1,4 @@
-import { Issue, Comment, Milestone, ReactionEntry, ReactionSummary, MilestoneProgress } from '../types';
+import { Issue, Comment, Milestone, ReactionEntry, ReactionSummary, MilestoneProgress, ThemeConfig, ThemeMetadata } from '../types';
 
 // Detect if we're running inside Tauri
 const isTauri = !!(window as any).__TAURI_INTERNALS__;
@@ -74,6 +74,14 @@ if (isTauri) {
             case 'get_issue_labels': return ['feature', 'improvement'];
             case 'get_labels_map': return [[1, ['feature']], [2, ['bug', 'improvement']]];
             case 'set_issue_labels': return null;
+            case 'get_installed_themes': return [];
+            case 'get_active_theme': return null;
+            case 'set_active_theme': return null;
+            case 'read_theme_file': return '';
+            case 'get_theme_asset_path': return '';
+            case 'delete_theme': return null;
+            case 'list_remote_themes': return [];
+            case 'download_theme': return null;
             default: return null;
         }
     };
@@ -139,4 +147,14 @@ export const api = {
     getOsUsername: () => invoke('get_os_username') as Promise<string>,
     getUserDisplayName: () => invoke('get_user_display_name') as Promise<string | null>,
     setUserDisplayName: (name: string | null) => invoke('set_user_display_name', { name }) as Promise<void>,
+
+    // Themes
+    getInstalledThemes: () => invoke('get_installed_themes') as Promise<ThemeConfig[]>,
+    getActiveTheme: () => invoke('get_active_theme') as Promise<ThemeConfig | null>,
+    setActiveTheme: (themeId: string | null) => invoke('set_active_theme', { themeId }) as Promise<void>,
+    readThemeFile: (themeId: string, filePath: string) => invoke('read_theme_file', { themeId, filePath }) as Promise<string>,
+    getThemeAssetPath: (themeId: string, assetPath: string) => invoke('get_theme_asset_path', { themeId, assetPath }) as Promise<string>,
+    deleteTheme: (themeId: string) => invoke('delete_theme', { themeId }) as Promise<void>,
+    listRemoteThemes: () => invoke('list_remote_themes') as Promise<ThemeMetadata[]>,
+    downloadTheme: (themeId: string) => invoke('download_theme', { themeId }) as Promise<ThemeConfig>,
 };

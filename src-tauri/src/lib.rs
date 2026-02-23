@@ -113,6 +113,14 @@ pub fn run() {
             settings::get_os_username,
             settings::get_user_display_name,
             settings::set_user_display_name,
+            commands::themes::get_installed_themes,
+            commands::themes::get_active_theme,
+            commands::themes::set_active_theme,
+            commands::themes::read_theme_file,
+            commands::themes::get_theme_asset_path,
+            commands::themes::delete_theme,
+            commands::themes::list_remote_themes,
+            commands::themes::download_theme,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

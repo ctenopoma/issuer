@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react';
 import { api } from '../lib/api';
+import { ThemeConfig } from '../types';
+import ThemeSelector from './ThemeSelector';
 
 interface SettingsProps {
     onBack: () => void;
     currentUser: string;
     onUserChanged: (newName: string) => void;
+    currentThemeId: string;
+    onThemeChanged: (theme: ThemeConfig) => void;
 }
 
-export default function Settings({ onBack, currentUser, onUserChanged }: SettingsProps) {
+export default function Settings({ onBack, currentUser, onUserChanged, currentThemeId, onThemeChanged }: SettingsProps) {
     const [nameInput, setNameInput] = useState(currentUser);
     const [windowsName, setWindowsName] = useState('');
     const [isSaving, setIsSaving] = useState(false);
@@ -95,6 +99,13 @@ export default function Settings({ onBack, currentUser, onUserChanged }: Setting
                             Issue やコメントで表示される名前です。<br />
                             空欄にして「リセット」すると Windows のユーザー名（{windowsName}）に戻ります。
                         </p>
+                    </div>
+
+                    <div className="pt-6 border-t border-brand-border mb-6">
+                        <ThemeSelector
+                            currentThemeId={currentThemeId}
+                            onThemeChanged={onThemeChanged}
+                        />
                     </div>
 
                     <div className="pt-6 border-t border-brand-border flex items-center justify-between">

@@ -5,3 +5,4 @@ pub mod labels;
 pub mod milestones;
 pub mod outlook;
 pub mod reactions;
+pub mod themes;
