@@ -30,6 +30,7 @@ jobs:
           node-version: '18'
 
       - name: (Optional) Build frontend
+        shell: bash
         run: |
           if [ -f package.json ]; then
             npm ci
