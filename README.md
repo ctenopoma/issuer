@@ -1,7 +1,43 @@
-# Tauri + React + Typescript
+# Issuer
 
-This template should help get you started developing with Tauri, React and Typescript in Vite.
+Issuerは、Tauri (Rust + React)で構築された、軽量かつ高性能なデスクトップ向け課題(Issue)管理アプリケーションです。
+共有フォルダ上での運用を前提に設計されており、ローカルキャッシュを利用することでネットワークドライブ上でも快適に動作します。
 
-## Recommended IDE Setup
+## 主要機能
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+- **Issue管理**: Issueおよびコメントの作成、閲覧、更新、削除 (CRUD操作)。
+- **マークダウン対応**: GitHub Flavored Markdownを利用したリッチテキストプレビュー機能。
+- **整理・分類**: リアクション、ラベル、マイルストーンなどを活用したIssueの細やかな管理。
+- **連携と参照**: `#123` 形式によるIssue間の自動リンク(クロスリファレンス)機能。
+- **Outlook連携**: Issueの内容からシームレスにOutlookのメール下書きを自動生成し、チームに共有可能。
+- **独自のネットワーク運用**: 共有ネットワークドライブから起動された際、自動的にローカル (`%LOCALAPPDATA%\Issuer`) へ実行ファイルとデータベース(SQLite)をコピーしてローカルで動作し、終了時に確実に共有フォルダへ同期します。これにより、ネットワーク遅延の影響を受けない軽快な動作を実現しています。
+- **排他制御(ロック機構)**: 共有ドライブでの複数人による同時アクセスや書き込み競合を防ぐため、ハートビート監視を備えた独自のロックファイルシステムを搭載しています。
+- **リッチな操作性**: クリップボードからの画像直接貼り付け(ペースト)に対応。
+
+## 技術スタック
+
+- **フロントエンド**: React 19, TypeScript, Vite, Tailwind CSS
+- **バックエンド/デスクトップ環境**: Tauri v2, Rust
+- **データベース**: SQLite (rusqlite)
+
+## 開発・ビルド方法
+
+### アプリケーションの開発実行
+
+```bash
+npm run dev
+# または
+npm run tauri dev
+```
+
+### プロダクション用ビルド
+
+```bash
+npm run build
+# または
+npm run tauri build
+```
+
+## バージョン情報
+
+現在のバージョン: **1.0.0**
