@@ -110,5 +110,5 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: issuer-windows-release
+          name: issuer-windows-release-${{ matrix.os }}
           path: src-tauri/target/release/issuer.exe
