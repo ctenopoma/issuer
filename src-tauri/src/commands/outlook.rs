@@ -15,27 +15,34 @@ pub fn create_outlook_draft(to: String, subject: String, body: String) -> Result
         return Ok(());
     }
 
-    // Method 3: Try ms-outlook: protocol (works with New Outlook / Store app)
-    if try_ms_outlook_protocol(&to, &subject, &body) {
-        return Ok(());
-    }
-
-    // Method 4: Try mailto: via PowerShell Start-Process (avoids cmd.exe '&' truncation issues)
-    crate::debug_log::log("[outlook] All methods failed, falling back to mailto:");
+    // Method 3: Default Mail Handler (mailto: via PowerShell)
+    crate::debug_log::log("[outlook] Falling back to default mail handler via mailto:");
     let mailto = format!(
         "mailto:{}?subject={}&body={}",
         urlencoding::encode(&to),
         urlencoding::encode(&subject),
         urlencoding::encode(&body)
     );
-    let _ = Command::new("powershell")
+
+    let result = Command::new("powershell")
         .args([
             "-NoProfile",
             "-Command",
-            &format!("Start-Process '{}'", mailto.replace("'", "''")),
+            &format!("Start-Process '{}'", mailto.replace('\'', "''")),
         ])
         .spawn();
-    Ok(())
+
+    match result {
+        Ok(_) => {
+            crate::debug_log::log("[outlook] mailto launched successfully");
+            Ok(())
+        }
+        Err(e) => {
+            let msg = format!("Failed to launch mail handler: {}", e);
+            crate::debug_log::log(&msg);
+            Err(msg)
+        }
+    }
 }
 
 /// Convert \n to \r\n to avoid clients dropping body content on mailto
@@ -48,6 +55,21 @@ fn normalize_body(body: &str) -> String {
 
 /// Try creating Outlook draft via COM automation (VBScript)
 fn try_vbscript_com(to: &str, subject: &str, body: &str) -> bool {
+    // Check if Classic Outlook COM object is registered to avoid 5-second cscript timeouts
+    // on systems where only New Outlook or no Outlook is installed.
+    if let Ok(out) = Command::new("reg")
+        .args(["query", "HKCR\\Outlook.Application"])
+        .output()
+    {
+        if !out.status.success() {
+            crate::debug_log::log("[outlook][COM] Outlook.Application not registered in HKCR");
+            return false;
+        }
+    } else {
+        crate::debug_log::log("[outlook][COM] Failed to query registry for Outlook.Application");
+        return false;
+    }
+
     let to_escaped = to.replace("\"", "\"\"");
     let subject_escaped = subject.replace("\"", "\"\"");
     let body_escaped = body
@@ -161,89 +183,6 @@ fn try_outlook_exe(to: &str, subject: &str, body: &str) -> bool {
         }
     }
     false
-}
-
-/// Try New Outlook via mailto: routed through the Store app directly
-fn try_ms_outlook_protocol(to: &str, subject: &str, body: &str) -> bool {
-    // Check if New Outlook is installed
-    let check = Command::new("powershell")
-        .args([
-            "-NoProfile", "-Command",
-            "Get-AppxPackage Microsoft.OutlookForWindows 2>$null | Select-Object -ExpandProperty PackageFamilyName"
-        ])
-        .output();
-
-    let check_success = match &check {
-        Ok(out) if out.status.success() => {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            let name = stdout.trim().to_string();
-            if name.is_empty() {
-                crate::debug_log::log("[outlook][PROTO] New Outlook not installed");
-                false
-            } else {
-                crate::debug_log::log(&format!("[outlook][PROTO] Found: {}", name));
-                true
-            }
-        }
-        Ok(_) => {
-            crate::debug_log::log("[outlook][PROTO] New Outlook not installed");
-            false
-        }
-        Err(e) => {
-            crate::debug_log::log(&format!("[outlook][PROTO] AppxPackage check failed: {}", e));
-            false
-        }
-    };
-
-    if !check_success {
-        return false;
-    }
-
-    // Prefer Start-Process mailto directly
-    let mailto = format!(
-        "mailto:{}?subject={}&body={}",
-        urlencoding::encode(to),
-        urlencoding::encode(subject),
-        urlencoding::encode(body)
-    );
-
-    // Use PowerShell to avoid cmd.exe truncating characters after '&'
-    let ps_command = format!("Start-Process '{}'", mailto.replace("'", "''"));
-    crate::debug_log::log(&"[outlook][PROTO] Launching via PowerShell Start-Process mailto".to_string());
-
-    let result = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_command])
-        .spawn();
-    match &result {
-        Ok(_) => {
-            crate::debug_log::log("[outlook][PROTO] mailto launched via PowerShell");
-            return true;
-        }
-        Err(e) => {
-            crate::debug_log::log(&format!("[outlook][PROTO] Start-Process failed: {}", e));
-        }
-    }
-
-    if result.is_ok() {
-        return true;
-    }
-
-    // Alternative: try powershell directly with the mailto URI
-    let ps_command2 = format!("Start-Process '{}'", mailto.replace("'", "''"));
-    let result2 = Command::new("powershell")
-        .args(["-NoProfile", "-Command", &ps_command2])
-        .spawn();
-
-    match result2 {
-        Ok(_) => {
-            crate::debug_log::log("[outlook][PROTO] Start-Process mailto launched");
-            true
-        }
-        Err(e) => {
-            crate::debug_log::log(&format!("[outlook][PROTO] Start-Process failed: {}", e));
-            false
-        }
-    }
 }
 
 /// Search for outlook.exe in common installation paths
