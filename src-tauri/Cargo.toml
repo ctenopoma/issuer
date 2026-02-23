@@ -2,7 +2,7 @@
 name = "issuer"
 version = "1.0.0"
 description = "Issue管理画面 — Tauri Desktop App"
-authors = ["naoki"]
+authors = ["Ctenopoma"]
 edition = "2021"
 build = "build.rs"
 

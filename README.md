@@ -75,7 +75,7 @@ Issuerは、社内のファイルサーバー（共有フォルダ）上に配�
 
 ### 前提条件
 
-- [Node.js](https://nodejs.org/) (v18以上)
+- [Node.js](https://nodejs.org/) (v20以上)
 - [Rust](https://www.rust-lang.org/tools/install) (stable)
 - [Tauri CLI](https://v2.tauri.app/start/prerequisites/)
 
