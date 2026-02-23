@@ -81,4 +81,9 @@ if __name__ == "__main__":
     import flet as ft
     from app.app_main import main
 
-    ft.app(target=main)
+    try:
+        ft.app(target=main)
+    except Exception:
+        logging.exception("Unhandled exception running Flet app")
+        # exit with non-zero so local runs notice failure; CI will also log
+        sys.exit(1)

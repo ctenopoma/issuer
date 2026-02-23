@@ -118,7 +118,6 @@ signal.signal(signal.SIGTERM, _cleanup_handler)
 
 def main(page: ft.Page):
     global _app_state
-
     page.title = APP_TITLE
     page.window.icon = resource_path("app.ico")
     page.window.maximized = True
@@ -499,7 +498,7 @@ def main(page: ft.Page):
             _start_heartbeat()
         refresh_list()
 
-    page.update()
+        page.update()
 
 
 # ==========================================================================
