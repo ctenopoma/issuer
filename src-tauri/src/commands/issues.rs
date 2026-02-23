@@ -163,8 +163,8 @@ pub fn delete_issue(id: i32, state: State<'_, AppState>) -> Result<(), String> {
 
     // Delete associated comments first
     conn.execute(
-        "UPDATE comments SET is_deleted = 1 WHERE issue_id = ?1",
-        rusqlite::params![id],
+        "UPDATE comments SET is_deleted = 1, updated_at = ?2 WHERE issue_id = ?1",
+        rusqlite::params![id, now],
     )
     .map_err(|e| e.to_string())?;
 
@@ -175,7 +175,7 @@ pub fn delete_issue(id: i32, state: State<'_, AppState>) -> Result<(), String> {
             "comments",
             cid,
             "update",
-            serde_json::json!({"is_deleted": 1}),
+            serde_json::json!({"is_deleted": 1, "updated_at": now}),
         );
     }
 

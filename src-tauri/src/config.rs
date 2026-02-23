@@ -7,7 +7,6 @@ pub struct AppConfig {
     pub original_dir: PathBuf,
     pub local_dir: PathBuf,
     pub db_path: PathBuf,
-    pub lock_path: PathBuf,
     pub is_local_relaunch: bool,
 }
 
@@ -31,13 +30,10 @@ impl AppConfig {
             original_dir.join("data.db")
         };
         
-        let lock_path = original_dir.join("app.lock");
-        
         Self {
             original_dir,
             local_dir,
             db_path,
-            lock_path,
             is_local_relaunch,
         }
     }

@@ -31,6 +31,11 @@ fn write_settings(config: &AppConfig, settings: &UserSettings) -> Result<(), Str
 }
 
 #[tauri::command]
+pub fn get_os_username() -> String {
+    whoami::username()
+}
+
+#[tauri::command]
 pub fn get_user_display_name(state: tauri::State<'_, crate::AppState>) -> Result<Option<String>, String> {
     let settings = read_settings(&state.config);
     Ok(settings.display_name)

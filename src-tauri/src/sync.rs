@@ -80,6 +80,9 @@ pub fn start_background_sync(
     let pc_name = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "UnknownPC".to_string());
 
     std::thread::spawn(move || {
+        let mut applied_deltas: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+
         loop {
             std::thread::sleep(std::time::Duration::from_secs(3));
 
@@ -104,16 +107,21 @@ pub fn start_background_sync(
 
                 for entry in files {
                     let path = entry.path();
-                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let file_name = path
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy()
+                        .to_string();
 
                     // Skip my own deltas
                     if file_name.contains(&pc_name) {
                         continue;
                     }
 
-                    // To avoid infinite re-processing, we need a local log of applied deltas.
-                    // For now, let's track the last applied timestamp/filename in memory or simple file.
-                    // A better approach is to delete the file AFTER it has been merged to master.
+                    // Skip already-applied deltas
+                    if applied_deltas.contains(&file_name) {
+                        continue;
+                    }
 
                     if let Ok(content) = fs::read_to_string(&path) {
                         if let Ok(payload) = serde_json::from_str::<DeltaSyncPayload>(&content) {
@@ -126,6 +134,9 @@ pub fn start_background_sync(
                             }
                         }
                     }
+
+                    // Mark as applied regardless of success (to avoid infinite retries)
+                    applied_deltas.insert(file_name);
                 }
             }
 
@@ -145,11 +156,6 @@ fn apply_delta(
         Ok(c) => c,
         Err(_) => return false,
     };
-
-    // We only process if we haven't seen this timestamp from this PC.
-    // For a robust implementation, we should record applied deltas locally.
-    // For simplicity in this demo, let's assume we can simply execute it
-    // and rely on LWW or SQLite IGNORE if it's an insert.
 
     let table = &payload.table;
     let target_id = payload.target_id;
@@ -194,6 +200,26 @@ fn apply_delta(
         let _ = conn.execute(&sql, param_refs.as_slice());
         return true;
     } else if payload.action == "update" {
+        // LWW: skip if local record's updated_at is newer than incoming
+        if let Some(incoming_ts) = changes.get("updated_at").and_then(|v| v.as_str()) {
+            let local_ts: Option<String> = conn
+                .query_row(
+                    &format!("SELECT updated_at FROM {} WHERE id = ?1", table),
+                    rusqlite::params![target_id],
+                    |row| row.get(0),
+                )
+                .ok();
+            if let Some(ref local) = local_ts {
+                if local.as_str() > incoming_ts {
+                    crate::debug_log::log(&format!(
+                        "LWW skip: {} id={} local={} > incoming={}",
+                        table, target_id, local, incoming_ts
+                    ));
+                    return false;
+                }
+            }
+        }
+
         let mut set_clauses = Vec::new();
         let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
 
@@ -314,72 +340,80 @@ pub fn merge_sync_temp_to_master(config: &AppConfig) -> Result<(), String> {
     // Sort files to apply in order
     files.sort_by_key(|a| a.file_name());
 
-    // 1. Lock check
-    crate::lock::force_acquire_lock_internal(config)?;
+    // 1. Acquire merge lock (temporary, released on completion or error)
+    crate::lock::acquire_merge_lock(config)?;
 
-    // 2. Master dump (copy to temp_merge.db)
-    let master_db_path = config.original_dir.join("data.db");
-    let temp_merge_db_path = config.local_dir.join("temp_merge.db");
+    let result = (|| -> Result<(), String> {
+        // 2. Master dump (copy to temp_merge.db)
+        let master_db_path = config.original_dir.join("data.db");
+        let temp_merge_db_path = config.local_dir.join("temp_merge.db");
 
-    // Remove old temp if exists
-    if temp_merge_db_path.exists() {
-        let _ = fs::remove_file(&temp_merge_db_path);
-    }
-
-    // If master (shared) DB does not exist, create it from local DB so that
-    // merging can proceed and the shared location will receive the DB.
-    if !master_db_path.exists() {
-        let local_db = config.local_dir.join("data.db");
-        if local_db.exists() {
-            fs::copy(&local_db, &temp_merge_db_path)
-                .map_err(|e| format!("Failed to copy local DB to temp (creating master): {}", e))?;
-        } else {
-            return Err("Neither master nor local DB exists to create temp_merge.db".to_string());
+        // Remove old temp if exists
+        if temp_merge_db_path.exists() {
+            let _ = fs::remove_file(&temp_merge_db_path);
         }
-    } else {
-        fs::copy(&master_db_path, &temp_merge_db_path)
-            .map_err(|e| format!("Failed to copy master DB to temp: {}", e))?;
-    }
 
-    // 3. Local merge (safe)
-    let temp_conn = crate::db::establish_connection(&temp_merge_db_path)
-        .map_err(|e| format!("Failed to connect to temp_merge.db: {}", e))?;
-    let temp_mutex = std::sync::Arc::new(std::sync::Mutex::new(temp_conn));
+        // If master (shared) DB does not exist, create it from local DB so that
+        // merging can proceed and the shared location will receive the DB.
+        if !master_db_path.exists() {
+            let local_db = config.local_dir.join("data.db");
+            if local_db.exists() {
+                fs::copy(&local_db, &temp_merge_db_path).map_err(|e| {
+                    format!("Failed to copy local DB to temp (creating master): {}", e)
+                })?;
+            } else {
+                return Err(
+                    "Neither master nor local DB exists to create temp_merge.db".to_string(),
+                );
+            }
+        } else {
+            fs::copy(&master_db_path, &temp_merge_db_path)
+                .map_err(|e| format!("Failed to copy master DB to temp: {}", e))?;
+        }
 
-    let mut success_files = Vec::new();
+        // 3. Local merge (safe)
+        let temp_conn = crate::db::establish_connection(&temp_merge_db_path)
+            .map_err(|e| format!("Failed to connect to temp_merge.db: {}", e))?;
+        let temp_mutex = std::sync::Arc::new(std::sync::Mutex::new(temp_conn));
 
-    for entry in files {
-        let path = entry.path();
-        if let Ok(content) = fs::read_to_string(&path) {
-            if let Ok(payload) = serde_json::from_str::<DeltaSyncPayload>(&content) {
-                if apply_delta(&temp_mutex, &payload) {
-                    success_files.push(path.clone());
-                } else {
-                    crate::debug_log::log(&format!(
-                        "Failed or skipped to apply delta during cleanup: {:?}",
-                        path
-                    ));
-                    // Even if we fail to apply one delta, we should probably keep going
-                    // Or track failed ones and not delete them.
-                    success_files.push(path.clone()); // Assuming we still delete to not get stuck
+        let mut success_files = Vec::new();
+
+        for entry in &files {
+            let path = entry.path();
+            if let Ok(content) = fs::read_to_string(&path) {
+                if let Ok(payload) = serde_json::from_str::<DeltaSyncPayload>(&content) {
+                    if apply_delta(&temp_mutex, &payload) {
+                        success_files.push(path.clone());
+                    } else {
+                        crate::debug_log::log(&format!(
+                            "Failed or skipped to apply delta during cleanup: {:?}",
+                            path
+                        ));
+                        // Even if we fail to apply one delta, we should probably keep going
+                        success_files.push(path.clone());
+                    }
                 }
             }
         }
-    }
 
-    // Explicitly drop connection before copying Windows files
-    drop(temp_mutex);
+        // Explicitly drop connection before copying Windows files
+        drop(temp_mutex);
 
-    // 4. Overwrite master (file operations only)
-    fs::copy(&temp_merge_db_path, &master_db_path)
-        .map_err(|e| format!("Failed to overwrite master DB: {}", e))?;
+        // 4. Overwrite master (file operations only)
+        fs::copy(&temp_merge_db_path, &master_db_path)
+            .map_err(|e| format!("Failed to overwrite master DB: {}", e))?;
 
-    // 5. Cleanup
-    for path in success_files {
-        let _ = fs::remove_file(path);
-    }
-    let _ = fs::remove_file(&temp_merge_db_path);
+        // 5. Cleanup
+        for path in success_files {
+            let _ = fs::remove_file(path);
+        }
+        let _ = fs::remove_file(&temp_merge_db_path);
 
-    crate::lock::release_lock(config);
-    Ok(())
+        Ok(())
+    })();
+
+    // Always release merge lock, even on error
+    crate::lock::release_merge_lock(config);
+
+    result
 }

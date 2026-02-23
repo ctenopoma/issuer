@@ -16,8 +16,8 @@ export default function Settings({ onBack, currentUser, onUserChanged }: Setting
         // Fetch windows name for placeholder
         const fetchWindowsName = async () => {
             try {
-                const info = await api.getLockInfo();
-                setWindowsName(info.current_user);
+                const osName = await api.getOsUsername();
+                setWindowsName(osName);
             } catch (e) {
                 console.error('Failed to get windows name:', e);
             }

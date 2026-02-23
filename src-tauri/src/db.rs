@@ -27,6 +27,7 @@ pub fn establish_connection<P: AsRef<Path>>(db_path: P) -> rusqlite::Result<Conn
             body       TEXT    NOT NULL,
             created_by TEXT    NOT NULL,
             created_at TEXT    NOT NULL,
+            updated_at TEXT    NOT NULL DEFAULT '',
             is_deleted INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS milestones (
@@ -100,6 +101,19 @@ pub fn establish_connection<P: AsRef<Path>>(db_path: P) -> rusqlite::Result<Conn
     let _ = conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_issues_milestone_id ON issues(milestone_id)",
     );
+
+    // Add updated_at column to comments if missing (migration for older databases)
+    let comment_columns: Vec<String> = conn
+        .prepare("PRAGMA table_info(comments)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(|r| r.ok())
+        .collect();
+    if !comment_columns.iter().any(|c| c == "updated_at") {
+        conn.execute_batch(
+            "ALTER TABLE comments ADD COLUMN updated_at TEXT NOT NULL DEFAULT '';
+             UPDATE comments SET updated_at = created_at WHERE updated_at = '';"
+        )?;
+    }
 
     Ok(conn)
 }

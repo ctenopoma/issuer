@@ -13,7 +13,6 @@ use tauri::Manager;
 pub struct AppState {
     pub db: std::sync::Arc<Mutex<rusqlite::Connection>>,
     pub config: config::AppConfig,
-    pub lock_status: Mutex<lock::LockStatus>,
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -30,11 +29,10 @@ pub fn run() {
         std::process::exit(0);
     }
 
-    // 2. Lock check
-    let lock_status = lock::check_lock_on_startup(&app_config);
-    debug_log::log(&format!("Lock status: {:?}", lock_status));
+    // Clean up legacy app.lock if it exists
+    let _ = std::fs::remove_file(app_config.original_dir.join("app.lock"));
 
-    // 3. Database connection
+    // 2. Database connection
     let db_conn =
         db::establish_connection(&app_config.db_path).expect("Failed to connect to database");
     debug_log::log("Database connection established");
@@ -54,7 +52,6 @@ pub fn run() {
             app.manage(AppState {
                 db: db_mutex,
                 config: app_config,
-                lock_status: Mutex::new(lock_status),
             });
             Ok(())
         })
@@ -62,7 +59,6 @@ pub fn run() {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let state = window.state::<AppState>();
                 let _ = crate::sync::merge_sync_temp_to_master(&state.config);
-                lock::release_lock(&state.config);
 
                 // Clean up local DB if this is a local copy created from a different original location
                 // Avoid deleting DB when original_dir and local_dir are the same (e.g. installed in LocalAppData)
@@ -78,7 +74,7 @@ pub fn run() {
                             let _ = std::mem::replace(&mut *guard, dummy);
                         }
                     }
-                    
+
                     // Remove the local DB files
                     for file in ["data.db", "data.db-wal", "data.db-shm"] {
                         let _ = std::fs::remove_file(state.config.local_dir.join(file));
@@ -89,9 +85,6 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
-            lock::force_acquire_lock,
-            lock::get_lock_info,
-            lock::update_heartbeat,
             commands::issues::get_issues,
             commands::issues::get_issue,
             commands::issues::create_issue,
@@ -117,6 +110,7 @@ pub fn run() {
             commands::labels::get_issue_labels,
             commands::labels::get_labels_map,
             commands::labels::set_issue_labels,
+            settings::get_os_username,
             settings::get_user_display_name,
             settings::set_user_display_name,
         ])
