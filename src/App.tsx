@@ -3,12 +3,13 @@ import IssueList from './components/IssueList';
 import IssueDetail from './components/IssueDetail';
 import NewIssue from './components/NewIssue';
 import MilestoneProgress from './components/MilestoneProgress';
+import Settings from './components/Settings';
 import { api } from './lib/api';
 import { FilterState } from './types';
 import { listen } from '@tauri-apps/api/event';
 
 type LockMode = 'edit' | 'readonly' | 'zombie' | 'loading';
-type ViewType = 'LIST' | 'DETAIL' | 'NEW' | 'MILESTONE';
+type ViewType = 'LIST' | 'DETAIL' | 'NEW' | 'MILESTONE' | 'SETTINGS';
 
 const FILTER_STORAGE_KEY = 'issuer-filter-state';
 
@@ -20,7 +21,6 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<string>('');
   const [showZombieDialog, setShowZombieDialog] = useState(false);
   const [showNameDialog, setShowNameDialog] = useState(false);
-  const [showSettingsDialog, setShowSettingsDialog] = useState(false);
   const [nameInput, setNameInput] = useState('');
   const [windowsName, setWindowsName] = useState('');
   const [savedFilter, setSavedFilter] = useState<FilterState | null>(null);
@@ -183,23 +183,7 @@ export default function App() {
   };
 
   const handleOpenSettings = () => {
-    setNameInput(currentUser);
-    setShowSettingsDialog(true);
-  };
-
-  const handleSaveSettings = async () => {
-    const trimmed = nameInput.trim();
-    if (trimmed) {
-      await api.setUserDisplayName(trimmed);
-      setCurrentUser(trimmed);
-    }
-    setShowSettingsDialog(false);
-  };
-
-  const handleClearName = async () => {
-    await api.setUserDisplayName(null);
-    setCurrentUser(windowsName);
-    setShowSettingsDialog(false);
+    setCurrentView('SETTINGS');
   };
 
   const isReadonly = lockMode === 'readonly';
@@ -241,18 +225,25 @@ export default function App() {
         </h1>
         <div className="flex items-center gap-4">
           {lockIndicator()}
+          <div className="h-4 w-px bg-brand-border mx-1"></div>
           {currentUser && (
-            <button
-              onClick={handleOpenSettings}
-              className="text-sm text-brand-text-muted flex items-center gap-1.5 hover:text-brand-primary transition cursor-pointer"
-              title="表示名を変更"
-            >
+            <div className="text-sm text-brand-text-muted flex items-center gap-1.5" title="現在の表示名">
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               {currentUser}
-            </button>
+            </div>
           )}
+          <button
+            onClick={handleOpenSettings}
+            className={`p-1.5 rounded-md transition ${currentView === 'SETTINGS' ? 'bg-brand-primary/10 text-brand-primary' : 'text-brand-text-muted hover:bg-brand-bg hover:text-brand-text-main'}`}
+            title="設定"
+          >
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
         </div>
       </header>
 
@@ -289,7 +280,7 @@ export default function App() {
         {currentView === 'NEW' && (
           <NewIssue
             onCancel={() => navigateTo('LIST')}
-            onCreated={(id) => navigateTo('DETAIL', id)}
+            onCreated={(id: number) => navigateTo('DETAIL', id)}
             currentUser={currentUser}
           />
         )}
@@ -298,6 +289,13 @@ export default function App() {
             key={`milestone-${refreshKey}`}
             onBack={() => navigateTo('LIST')}
             onSelectMilestone={handleMilestoneSelect}
+          />
+        )}
+        {currentView === 'SETTINGS' && (
+          <Settings
+            currentUser={currentUser}
+            onUserChanged={setCurrentUser}
+            onBack={() => navigateTo('LIST')}
           />
         )}
       </main>
@@ -346,61 +344,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Settings Dialog */}
-      {showSettingsDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-brand-card rounded-xl shadow-2xl max-w-md w-full mx-4 p-0 overflow-hidden">
-            <div className="bg-gray-50 border-b border-brand-border px-6 py-4">
-              <h2 className="text-lg font-bold text-brand-text-main flex items-center gap-2">
-                <svg className="w-6 h-6 text-brand-text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                設定
-              </h2>
-            </div>
-            <div className="px-6 py-5">
-              <label className="block text-sm font-medium text-brand-text-main mb-2">表示名</label>
-              <input
-                type="text"
-                value={nameInput}
-                onChange={e => setNameInput(e.target.value)}
-                placeholder={windowsName}
-                className="w-full border border-brand-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent"
-                onKeyDown={e => { if (e.key === 'Enter') handleSaveSettings(); }}
-                autoFocus
-              />
-              <p className="text-xs text-brand-text-muted mt-2">
-                空欄にして「リセット」すると Windows のユーザー名（{windowsName}）に戻ります。
-              </p>
-            </div>
-            <div className="px-6 py-4 bg-gray-50 border-t border-brand-border flex justify-between">
-              <button
-                onClick={handleClearName}
-                className="text-sm text-brand-text-muted hover:text-red-600 transition"
-              >
-                リセット
-              </button>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setShowSettingsDialog(false)}
-                  className="border border-brand-border bg-brand-card text-brand-text-main px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-100 transition shadow-sm"
-                >
-                  キャンセル
-                </button>
-                <button
-                  onClick={handleSaveSettings}
-                  className="bg-brand-primary text-white px-4 py-2 rounded-md text-sm font-medium hover:opacity-90 transition shadow-sm"
-                >
-                  保存
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Zombie Lock Dialog (modal overlay) */}
+      {/* Name Registration Dialog (first launch) */}
       {showZombieDialog && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
           <div className="bg-brand-card rounded-xl shadow-2xl max-w-md w-full mx-4 p-0 overflow-hidden">

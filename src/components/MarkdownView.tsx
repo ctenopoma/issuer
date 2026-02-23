@@ -125,10 +125,11 @@ function linkify(text: string): string {
     while ((match = issueRe.exec(text)) !== null) {
         if (inProtected(match.index, match.index + match[0].length)) continue;
         const issueId = match[1];
+        // Hack to bypass ReactMarkdown sanitization
         allMatches.push({
             start: match.index,
             end: match.index + match[0].length,
-            replacement: `[#${issueId}](issue://${issueId})`,
+            replacement: `[#${issueId}](http://internal-issue/${issueId})`,
         });
     }
 
@@ -197,23 +198,31 @@ export default function MarkdownView({ content, onNavigateToIssue }: Props) {
     return (
         <ReactMarkdown
             remarkPlugins={[remarkGfm, remarkDirective, remarkDirectiveRehype]}
+            urlTransform={(url) => url}
             components={{
                 a({ href, children, ...props }) {
-                    // Handle issue:// links
-                    if (href && href.startsWith('issue://')) {
-                        const issueId = parseInt(href.replace('issue://', ''), 10);
+                    // Handle issue:// links (mapped from http://internal-issue/ bypassed renderer)
+                    if (href && (href.includes('issue://') || href.includes('internal-issue/'))) {
+                        const match = href.match(/(?:issue:\/\/|internal-issue\/)(\d+)/);
+                        const issueId = match ? parseInt(match[1], 10) : NaN;
                         return (
                             <a
-                                href="#"
+                                {...props}
+                                href={`#issue-${issueId}`}
+                                title={`Issue #${issueId} を開く`}
                                 onClick={(e) => {
                                     e.preventDefault();
+                                    e.stopPropagation();
                                     if (onNavigateToIssue && !isNaN(issueId)) {
                                         onNavigateToIssue(issueId);
+                                    } else {
+                                        // Inform user if this link is unclickable in the current context
+                                        console.warn(`Issue #${issueId} clicked, but navigation is not supported in this view.`);
                                     }
                                 }}
-                                className="text-brand-primary hover:underline font-medium cursor-pointer"
-                                {...props}
+                                className="text-brand-primary hover:underline font-medium cursor-pointer flex items-center gap-0.5 inline-flex whitespace-nowrap"
                             >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="inline-block opacity-70"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
                                 {children}
                             </a>
                         );
@@ -397,6 +406,6 @@ export default function MarkdownView({ content, onNavigateToIssue }: Props) {
             }}
         >
             {processedContent}
-        </ReactMarkdown>
+        </ReactMarkdown >
     );
 }
