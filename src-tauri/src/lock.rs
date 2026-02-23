@@ -28,9 +28,10 @@ pub struct LockInfo {
 }
 
 impl LockInfo {
-    pub fn from_status(status: &LockStatus) -> Self {
+    pub fn from_status(status: &LockStatus, config: &crate::config::AppConfig) -> Self {
         let current_user = whoami::username();
-        let display_name = whoami::realname();
+        let settings = crate::settings::read_settings(config);
+        let display_name = settings.display_name.unwrap_or_else(|| whoami::realname());
         match status {
             LockStatus::Edit => LockInfo {
                 mode: "edit".into(),
@@ -124,7 +125,7 @@ pub fn release_lock(config: &AppConfig) {
 #[tauri::command]
 pub fn get_lock_info(state: tauri::State<'_, crate::AppState>) -> Result<LockInfo, String> {
     let status = state.lock_status.lock().map_err(|e| e.to_string())?;
-    Ok(LockInfo::from_status(&status))
+    Ok(LockInfo::from_status(&status, &state.config))
 }
 
 /// Heartbeat: update the lock timestamp (called periodically from frontend)

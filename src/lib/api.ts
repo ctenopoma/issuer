@@ -58,7 +58,9 @@ if (isTauri) {
                 { milestone_id: 2, total: 0, closed: 0, percent: 0 },
             ];
             case 'paste_image': return 'assets/mock.png';
-            case 'get_lock_info': return { mode: 'edit', locked_by: null, current_user: 'mock_user' };
+            case 'get_lock_info': return { mode: 'edit', locked_by: null, current_user: 'mock_user', display_name: 'Mock User' };
+            case 'get_user_display_name': return null;
+            case 'set_user_display_name': return null;
             case 'update_heartbeat': return null;
             case 'force_acquire_lock': return null;
             case 'get_issue_reactions': return [
@@ -139,4 +141,8 @@ export const api = {
     getLockInfo: () => invoke('get_lock_info') as Promise<{ mode: string; locked_by: string | null; current_user: string; display_name: string }>,
     updateHeartbeat: () => invoke('update_heartbeat') as Promise<void>,
     forceAcquireLock: () => invoke('force_acquire_lock') as Promise<void>,
+
+    // Settings
+    getUserDisplayName: () => invoke('get_user_display_name') as Promise<string | null>,
+    setUserDisplayName: (name: string | null) => invoke('set_user_display_name', { name }) as Promise<void>,
 };

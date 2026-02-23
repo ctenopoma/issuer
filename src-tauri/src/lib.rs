@@ -4,6 +4,7 @@ pub mod db;
 pub mod debug_log;
 pub mod lock;
 mod relaunch;
+pub mod settings;
 pub mod sync;
 
 use std::sync::Mutex;
@@ -116,6 +117,8 @@ pub fn run() {
             commands::labels::get_issue_labels,
             commands::labels::get_labels_map,
             commands::labels::set_issue_labels,
+            settings::get_user_display_name,
+            settings::set_user_display_name,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
