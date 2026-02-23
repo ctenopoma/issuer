@@ -35,7 +35,7 @@ export default function ReactionBar({ reactions, onToggle, disabled = false }: P
 
             {/* Add reaction dropdown */}
             {!disabled && (
-                <div className="relative group">
+                <div className="relative group/reaction">
                     <button
                         className="inline-flex items-center px-1.5 py-0.5 rounded-full text-xs border border-dashed border-brand-border text-brand-text-muted hover:border-gray-400 hover:text-brand-text-main transition"
                         title="リアクションを追加"
@@ -43,7 +43,7 @@ export default function ReactionBar({ reactions, onToggle, disabled = false }: P
                         <span className="text-sm">😀</span>
                         <span className="ml-0.5">+</span>
                     </button>
-                    <div className="absolute left-0 bottom-full mb-1 hidden group-hover:flex bg-brand-card rounded-lg shadow-lg border border-brand-border p-1.5 gap-1 z-10">
+                    <div className="absolute left-0 bottom-full mb-1 hidden group-hover/reaction:flex bg-brand-card rounded-lg shadow-lg border border-brand-border p-1.5 gap-1 z-10">
                         {REACTION_OPTIONS.map(emoji => {
                             const existing = reactionsMap.get(emoji);
                             return (
