@@ -1,8 +1,69 @@
 import { useState, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkDirective from 'remark-directive';
+import { visit } from 'unist-util-visit';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { api } from '../lib/api';
+
+/**
+ * Remark plugin to map standard directives to custom HTML elements or attributes
+ */
+function remarkDirectiveRehype() {
+    return (tree: any) => {
+        visit(tree, (node) => {
+            if (node.type === 'containerDirective') {
+                if (node.name === 'message') {
+                    const data = node.data || (node.data = {});
+                    const type = node.attributes?.class || 'info';
+                    data.hName = 'div';
+                    data.hProperties = { className: `zenn-message ${type}` };
+                } else if (node.name === 'details') {
+                    const data = node.data || (node.data = {});
+                    data.hName = 'details';
+                    data.hProperties = {
+                        className: 'zenn-details bg-white border border-brand-border rounded-md my-3 shadow-sm'
+                    };
+                }
+            }
+
+            // Map directiveLabel inside containerDirective to summary
+            if (node.type === 'paragraph' && node.data?.directiveLabel) {
+                node.data.hName = 'summary';
+                node.data.hProperties = {
+                    className: 'font-bold cursor-pointer px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center gap-2 select-none border-b border-transparent'
+                };
+            }
+        });
+    };
+}
+
+/**
+ * Preprocess markdown to convert Zenn syntax to standard remark-directive syntax
+ */
+function preprocessZennMarkdown(text: string): string {
+    if (!text) return text;
+
+    // :::message alert -> :::message{.alert}
+    // :::message -> :::message
+    let result = text.replace(/^:::message(\s+([a-zA-Z0-9_-]+))?$/gm, (_match, _p1, p2) => {
+        if (p2) {
+            return `:::message{.${p2}}`;
+        }
+        return `:::message`;
+    });
+
+    // :::details Title here -> :::details[Title here]
+    // :::details -> :::details
+    result = result.replace(/^:::details(\s+(.+))?$/gm, (_match, _p1, p2) => {
+        if (p2) {
+            return `:::details[${p2}]`;
+        }
+        return `:::details`;
+    });
+
+    return result;
+}
 
 interface Props {
     content: string;
@@ -122,20 +183,20 @@ function resolveImageUrls(text: string, assetsDir: string | null): string {
 
 export default function MarkdownView({ content, onNavigateToIssue }: Props) {
     const [assetsDir, setAssetsDir] = useState<string | null>(cachedAssetsDir);
-    const processedContent = linkify(resolveImageUrls(content || '', assetsDir));
+    const processedContent = linkify(resolveImageUrls(preprocessZennMarkdown(content || ''), assetsDir));
 
     useEffect(() => {
         if (!cachedAssetsDir) {
             api.getAssetsDir().then(dir => {
                 cachedAssetsDir = dir;
                 setAssetsDir(dir);
-            }).catch(() => {});
+            }).catch(() => { });
         }
     }, []);
 
     return (
         <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
+            remarkPlugins={[remarkGfm, remarkDirective, remarkDirectiveRehype]}
             components={{
                 a({ href, children, ...props }) {
                     // Handle issue:// links
@@ -194,6 +255,47 @@ export default function MarkdownView({ content, onNavigateToIssue }: Props) {
                         />
                     );
                 },
+                div({ className, children, ...props }) {
+                    if (className?.includes('zenn-message')) {
+                        const type = className.split(' ').find(c => ['info', 'alert', 'warn'].includes(c)) || 'info';
+                        let bgClass = "bg-blue-50 text-blue-900 border-blue-500";
+                        let icon = "💡";
+
+                        if (type === 'alert') {
+                            bgClass = "bg-red-50 text-red-900 border-red-500";
+                            icon = "⚠️";
+                        } else if (type === 'warn') {
+                            bgClass = "bg-yellow-50 text-yellow-900 border-yellow-500";
+                            icon = "🚧";
+                        }
+
+                        // Check if children contain any content (for removing empty margins)
+                        return (
+                            <div className={`my-4 p-4 rounded-md border-l-4 bg-opacity-70 ${bgClass}`}>
+                                <div className="flex gap-3">
+                                    <div className="text-xl flex-shrink-0 leading-5">{icon}</div>
+                                    <div className="flex-1 w-0 space-y-2 text-sm leading-relaxed zenn-message-content">
+                                        {children}
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    }
+                    return <div className={className} {...props}>{children}</div>;
+                },
+                details({ className, children, ...props }) {
+                    return (
+                        <details className={className} {...props}>
+                            {children}
+                            {/* If there is no summary, add a default one for empty :::details */}
+                            {!Array.isArray(children) || !children.some((c: any) => c?.props?.className?.includes('cursor-pointer')) ? (
+                                <summary className="font-bold cursor-pointer px-4 py-3 bg-gray-50 hover:bg-gray-100 flex items-center gap-2 border-b border-transparent">
+                                    詳細
+                                </summary>
+                            ) : null}
+                        </details>
+                    );
+                },
                 // Style markdown elements
                 p({ children }) {
                     return <p className="mb-2 leading-relaxed">{children}</p>;
@@ -217,20 +319,52 @@ export default function MarkdownView({ content, onNavigateToIssue }: Props) {
                     const isInline = !className;
                     if (isInline) {
                         return (
-                            <code className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-[13px] font-mono">
+                            <code className="bg-gray-100 text-red-600 px-1.5 py-0.5 rounded text-[13px] font-mono whitespace-pre-wrap word-break-all">
                                 {children}
                             </code>
                         );
                     }
+
+                    let cleanClass = className;
+                    const match = /language-([^:]+):(.+)/.exec(className || '');
+                    if (match) {
+                        cleanClass = `language-${match[1]}`;
+                    }
+
                     return (
-                        <code className={className}>
+                        <code className={cleanClass}>
                             {children}
                         </code>
                     );
                 },
-                pre({ children }) {
+                pre({ children, node }) {
+                    const codeNode = (node as any)?.children?.[0];
+                    let className = '';
+                    if (codeNode && codeNode.type === 'element' && codeNode.tagName === 'code') {
+                        className = (codeNode.properties?.className || []).join(' ');
+                    }
+
+                    const match = /language-([^:]+):(.+)/.exec(className);
+                    let filename = '';
+                    if (match) {
+                        filename = match[2];
+                    }
+
+                    if (filename) {
+                        return (
+                            <div className="my-3 rounded-md border border-brand-border overflow-hidden shadow-sm">
+                                <div className="bg-gray-200 px-4 py-2 text-[12px] font-mono text-gray-700 font-bold border-b border-brand-border select-none">
+                                    {filename}
+                                </div>
+                                <pre className="bg-[#f8f9fa] p-4 overflow-x-auto text-[13px] font-mono m-0 border-0 rounded-none">
+                                    {children}
+                                </pre>
+                            </div>
+                        );
+                    }
+
                     return (
-                        <pre className="bg-gray-50 border border-brand-border rounded-md p-4 overflow-x-auto text-[13px] font-mono my-2">
+                        <pre className="bg-[#f8f9fa] border border-brand-border rounded-md p-4 overflow-x-auto text-[13px] font-mono my-3 shadow-sm">
                             {children}
                         </pre>
                     );
