@@ -293,10 +293,12 @@ def main(page: ft.Page):
         user32 = ctypes.windll.user32
         kernel32 = ctypes.windll.kernel32
 
-        # 正しい型定義: LRESULT を返し、引数は int, WPARAM, LPARAM
-        # WinAPI のコールバックは WINFUNCTYPE を使い、戻り値は c_long (LRESULT)
+        # 戻り値のサイズはアーキ依存（x86: 32bit, x64: 64bit）なので適切に選択する
+        ret_type = ctypes.c_long if ctypes.sizeof(ctypes.c_void_p) == 4 else ctypes.c_longlong
+
+        # WinAPI のコールバックは WINFUNCTYPE を使う
         HOOKPROC = ctypes.WINFUNCTYPE(
-            ctypes.c_long,  # LRESULT
+            ret_type,  # LRESULT
             ctypes.c_int,
             ctypes.wintypes.WPARAM,
             ctypes.wintypes.LPARAM,
@@ -304,21 +306,21 @@ def main(page: ft.Page):
 
         # CallNextHookEx の引数・戻り値の型を明示的に設定
         user32.CallNextHookEx.argtypes = [
-            ctypes.wintypes.HHOOK,
+            ctypes.c_void_p,
             ctypes.c_int,
             ctypes.wintypes.WPARAM,
             ctypes.wintypes.LPARAM,
         ]
-        user32.CallNextHookEx.restype = ctypes.c_long  # LRESULT
+        user32.CallNextHookEx.restype = ret_type  # LRESULT
 
         # SetWindowsHookExW の引数・戻り値の型を明示的に設定
         user32.SetWindowsHookExW.argtypes = [
             ctypes.c_int,
             HOOKPROC,
-            ctypes.wintypes.HINSTANCE,
+            ctypes.c_void_p,
             ctypes.wintypes.DWORD,
         ]
-        user32.SetWindowsHookExW.restype = ctypes.wintypes.HHOOK
+        user32.SetWindowsHookExW.restype = ctypes.c_void_p
 
         class MSLLHOOKSTRUCT(ctypes.Structure):
             _fields_ = [
@@ -326,7 +328,7 @@ def main(page: ft.Page):
                 ("mouseData", ctypes.wintypes.DWORD),
                 ("flags", ctypes.wintypes.DWORD),
                 ("time", ctypes.wintypes.DWORD),
-                ("dwExtraInfo", ctypes.POINTER(ctypes.c_ulong)),
+                ("dwExtraInfo", ctypes.c_void_p),
             ]
 
         def low_level_mouse_proc(nCode, wParam, lParam):

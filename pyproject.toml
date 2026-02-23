@@ -6,8 +6,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "flet>=0.24.0",
+    "flet-desktop",
     "pillow>=10.4.0",
     "pywin32>=311",
+    "pyinstaller>=6.19.0",
+    
 ]
 
 [dependency-groups]
