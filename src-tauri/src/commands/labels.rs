@@ -134,12 +134,18 @@ pub fn set_issue_labels(
     }
 
     // Update issue timestamp
+    // Update issue timestamp
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
         "UPDATE issues SET updated_at = ?1 WHERE id = ?2",
         rusqlite::params![now, issue_id],
     )
     .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({
+        "labels": normalized
+    });
+    let _ = crate::sync::push_delta(&state.config, "issue_labels", issue_id, "set", payload);
 
     Ok(())
 }

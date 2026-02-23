@@ -18,7 +18,7 @@ pub struct Milestone {
 pub fn get_milestones(state: State<'_, AppState>) -> Result<Vec<Milestone>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    let mut stmt = conn.prepare("SELECT id, title, description, start_date, due_date, status, created_at, updated_at FROM milestones ORDER BY updated_at DESC")
+    let mut stmt = conn.prepare("SELECT id, title, description, start_date, due_date, status, created_at, updated_at FROM milestones WHERE is_deleted = 0 ORDER BY updated_at DESC")
         .map_err(|e| e.to_string())?;
 
     let iter = stmt
@@ -55,12 +55,27 @@ pub fn create_milestone(
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let now = chrono::Local::now().to_rfc3339();
 
+    let id = (uuid::Uuid::new_v4().as_fields().0 & 0x7FFFFFFF) as i32;
+
     conn.execute(
-        "INSERT INTO milestones (title, description, start_date, due_date, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, 'planned', ?5, ?5)",
-        rusqlite::params![title, description, start_date, due_date, now],
+        "INSERT INTO milestones (id, title, description, start_date, due_date, status, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, ?5, 'planned', ?6, ?6)",
+        rusqlite::params![id, title, description, start_date, due_date, now],
     ).map_err(|e| e.to_string())?;
 
-    Ok(conn.last_insert_rowid() as i32)
+    let payload = serde_json::json!({
+        "id": id,
+        "title": title,
+        "description": description,
+        "start_date": start_date,
+        "due_date": due_date,
+        "status": "planned",
+        "created_at": now,
+        "updated_at": now,
+        "is_deleted": 0
+    });
+    let _ = crate::sync::push_delta(&state.config, "milestones", id, "insert", payload);
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -82,12 +97,34 @@ pub fn update_milestone(
     )
     .map_err(|e| e.to_string())?;
 
+    let payload = serde_json::json!({
+        "title": title,
+        "description": description,
+        "start_date": start_date,
+        "due_date": due_date,
+        "status": status,
+        "updated_at": now
+    });
+    let _ = crate::sync::push_delta(&state.config, "milestones", id, "update", payload);
+
     Ok(())
 }
 
 #[tauri::command]
 pub fn delete_milestone(id: i32, state: State<'_, AppState>) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Local::now().to_rfc3339();
+
+    // Find issues first to push deltas for them
+    let mut stmt = conn
+        .prepare("SELECT id FROM issues WHERE milestone_id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut issues_to_unlink = Vec::new();
+    if let Ok(iter) = stmt.query_map([id], |row| row.get(0)) {
+        for issue_id in iter.flatten() {
+            issues_to_unlink.push(issue_id);
+        }
+    }
 
     // Unlink issues from this milestone
     conn.execute(
@@ -96,11 +133,27 @@ pub fn delete_milestone(id: i32, state: State<'_, AppState>) -> Result<(), Strin
     )
     .map_err(|e| e.to_string())?;
 
+    for issue_id in issues_to_unlink {
+        let _ = crate::sync::push_delta(
+            &state.config,
+            "issues",
+            issue_id,
+            "update",
+            serde_json::json!({"milestone_id": null, "updated_at": now}),
+        );
+    }
+
     conn.execute(
-        "DELETE FROM milestones WHERE id = ?1",
-        rusqlite::params![id],
+        "UPDATE milestones SET is_deleted = 1, updated_at = ?2 WHERE id = ?1",
+        rusqlite::params![id, now],
     )
     .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({
+        "is_deleted": 1,
+        "updated_at": now
+    });
+    let _ = crate::sync::push_delta(&state.config, "milestones", id, "update", payload);
 
     Ok(())
 }
@@ -124,7 +177,8 @@ pub fn get_milestone_progress(
                     COUNT(i.id) AS total,
                     SUM(CASE WHEN i.status = 'CLOSED' THEN 1 ELSE 0 END) AS closed
              FROM milestones m
-             LEFT JOIN issues i ON i.milestone_id = m.id
+             LEFT JOIN issues i ON i.milestone_id = m.id AND i.is_deleted = 0
+             WHERE m.is_deleted = 0
              GROUP BY m.id
              ORDER BY m.updated_at DESC",
         )

@@ -1,15 +1,16 @@
 pub mod commands;
 mod config;
 pub mod db;
+pub mod debug_log;
 pub mod lock;
 mod relaunch;
-pub mod debug_log;
+pub mod sync;
 
 use std::sync::Mutex;
 use tauri::Manager;
 
 pub struct AppState {
-    pub db: Mutex<rusqlite::Connection>,
+    pub db: std::sync::Arc<Mutex<rusqlite::Connection>>,
     pub config: config::AppConfig,
     pub lock_status: Mutex<lock::LockStatus>,
 }
@@ -18,7 +19,10 @@ pub struct AppState {
 pub fn run() {
     let app_config = config::AppConfig::new();
 
-    debug_log::log(&format!("App starting. db_path={:?}, is_local_relaunch={}", app_config.db_path, app_config.is_local_relaunch));
+    debug_log::log(&format!(
+        "App starting. db_path={:?}, is_local_relaunch={}",
+        app_config.db_path, app_config.is_local_relaunch
+    ));
 
     // 1. Local relaunch check
     if relaunch::ensure_local_execution(&app_config) {
@@ -37,8 +41,17 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(move |app| {
+            let app_handle = app.handle();
+            let db_mutex = std::sync::Arc::new(Mutex::new(db_conn));
+
+            crate::sync::start_background_sync(
+                app_config.clone(),
+                db_mutex.clone(),
+                app_handle.clone(),
+            );
+
             app.manage(AppState {
-                db: Mutex::new(db_conn),
+                db: db_mutex,
                 config: app_config,
                 lock_status: Mutex::new(lock_status),
             });
@@ -47,8 +60,8 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { .. } = event {
                 let state = window.state::<AppState>();
+                let _ = crate::sync::merge_sync_temp_to_master(&state.config);
                 lock::release_lock(&state.config);
-                db::sync_db_back(&state.config);
             }
         })
         .invoke_handler(tauri::generate_handler![

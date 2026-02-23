@@ -15,7 +15,7 @@ pub struct Comment {
 pub fn get_comments(issue_id: i32, state: State<'_, AppState>) -> Result<Vec<Comment>, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
 
-    let mut stmt = conn.prepare("SELECT id, issue_id, body, created_by, created_at FROM comments WHERE issue_id = ?1 ORDER BY created_at ASC")
+    let mut stmt = conn.prepare("SELECT id, issue_id, body, created_by, created_at FROM comments WHERE issue_id = ?1 AND is_deleted = 0 ORDER BY created_at ASC")
         .map_err(|e| e.to_string())?;
 
     let iter = stmt
@@ -47,14 +47,25 @@ pub fn create_comment(
 ) -> Result<i32, String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
     let now = chrono::Local::now().to_rfc3339();
+    let id = (uuid::Uuid::new_v4().as_fields().0 & 0x7FFFFFFF) as i32;
 
     conn.execute(
-        "INSERT INTO comments (issue_id, body, created_by, created_at) VALUES (?1, ?2, ?3, ?4)",
-        rusqlite::params![issue_id, body, created_by, now],
+        "INSERT INTO comments (id, issue_id, body, created_by, created_at) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![id, issue_id, body, created_by, now],
     )
     .map_err(|e| e.to_string())?;
 
-    Ok(conn.last_insert_rowid() as i32)
+    let payload = serde_json::json!({
+        "id": id,
+        "issue_id": issue_id,
+        "body": body,
+        "created_by": created_by,
+        "created_at": now,
+        "is_deleted": 0
+    });
+    let _ = crate::sync::push_delta(&state.config, "comments", id, "insert", payload);
+
+    Ok(id)
 }
 
 #[tauri::command]
@@ -65,13 +76,28 @@ pub fn update_comment(id: i32, body: String, state: State<'_, AppState>) -> Resu
         rusqlite::params![body, id],
     )
     .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({
+        "body": body
+    });
+    let _ = crate::sync::push_delta(&state.config, "comments", id, "update", payload);
+
     Ok(())
 }
 
 #[tauri::command]
 pub fn delete_comment(id: i32, state: State<'_, AppState>) -> Result<(), String> {
     let conn = state.db.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM comments WHERE id = ?1", rusqlite::params![id])
-        .map_err(|e| e.to_string())?;
+    conn.execute(
+        "UPDATE comments SET is_deleted = 1 WHERE id = ?1",
+        rusqlite::params![id],
+    )
+    .map_err(|e| e.to_string())?;
+
+    let payload = serde_json::json!({
+        "is_deleted": 1
+    });
+    let _ = crate::sync::push_delta(&state.config, "comments", id, "update", payload);
+
     Ok(())
 }

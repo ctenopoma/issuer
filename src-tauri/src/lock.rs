@@ -137,11 +137,17 @@ pub fn update_heartbeat(state: tauri::State<'_, crate::AppState>) -> Result<(), 
     Ok(())
 }
 
+/// Internal force acquire
+pub fn force_acquire_lock_internal(config: &AppConfig) -> Result<(), String> {
+    let _ = fs::remove_file(&config.lock_path);
+    write_lock(config);
+    Ok(())
+}
+
 /// Force acquire for Zombie scenario
 #[tauri::command]
 pub fn force_acquire_lock(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
-    let _ = fs::remove_file(&state.config.lock_path);
-    write_lock(&state.config);
+    force_acquire_lock_internal(&state.config)?;
     let mut status = state.lock_status.lock().map_err(|e| e.to_string())?;
     *status = LockStatus::Edit;
     Ok(())

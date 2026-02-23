@@ -5,6 +5,7 @@ import NewIssue from './components/NewIssue';
 import MilestoneProgress from './components/MilestoneProgress';
 import { api } from './lib/api';
 import { FilterState } from './types';
+import { listen } from '@tauri-apps/api/event';
 
 type LockMode = 'edit' | 'readonly' | 'zombie' | 'loading';
 type ViewType = 'LIST' | 'DETAIL' | 'NEW' | 'MILESTONE';
@@ -19,6 +20,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<string>('');
   const [showZombieDialog, setShowZombieDialog] = useState(false);
   const [savedFilter, setSavedFilter] = useState<FilterState | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
   const viewRef = useRef(currentView);
   viewRef.current = currentView;
 
@@ -58,6 +60,18 @@ export default function App() {
         setSavedFilter(JSON.parse(stored));
       }
     } catch { /* ignore */ }
+
+    // Listen for delta sync refresh events
+    const unlisten = listen('refresh-data', () => {
+      // We force a re-render or instruct children to fetch by sending a signal.
+      // Easiest is to add a refreshKey state and pass it down, or just rely
+      // on SWR/React Query if we had it. Since we don't, we'll use a refresh counter.
+      setRefreshKey(prev => prev + 1);
+    });
+
+    return () => {
+      unlisten.then(f => f());
+    };
   }, []);
 
   // Heartbeat: update lock timestamp every 60s (edit mode only)
@@ -195,6 +209,7 @@ export default function App() {
       <main className="max-w-[980px] mx-auto py-6 px-6">
         {currentView === 'LIST' && (
           <IssueList
+            key={`list-${refreshKey}`}
             onSelectIssue={(id) => navigateTo('DETAIL', id)}
             onNewIssue={() => navigateTo('NEW')}
             onShowMilestoneProgress={() => navigateTo('MILESTONE')}
@@ -204,6 +219,7 @@ export default function App() {
         )}
         {currentView === 'DETAIL' && selectedIssueId && (
           <IssueDetail
+            key={`detail-${selectedIssueId}-${refreshKey}`}
             issueId={selectedIssueId}
             onBack={() => navigateTo('LIST')}
             onNavigateToIssue={(id) => navigateTo('DETAIL', id)}
@@ -219,6 +235,7 @@ export default function App() {
         )}
         {currentView === 'MILESTONE' && (
           <MilestoneProgress
+            key={`milestone-${refreshKey}`}
             onBack={() => navigateTo('LIST')}
             onSelectMilestone={handleMilestoneSelect}
           />

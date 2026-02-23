@@ -89,6 +89,20 @@ pub fn toggle_issue_reaction(
         .map_err(|e| e.to_string())?;
     }
 
+    let payload = serde_json::json!({
+        "issue_id": issue_id,
+        "reacted_by": current_user,
+        "reaction": reaction,
+        "deleted": exists
+    });
+    let _ = crate::sync::push_delta(
+        &state.config,
+        "issue_reactions",
+        issue_id,
+        "toggle",
+        payload,
+    );
+
     // Update issue timestamp
     let now = chrono::Local::now().to_rfc3339();
     conn.execute(
@@ -187,6 +201,20 @@ pub fn toggle_comment_reaction(
         )
         .map_err(|e| e.to_string())?;
     }
+
+    let payload = serde_json::json!({
+        "comment_id": comment_id,
+        "reacted_by": current_user,
+        "reaction": reaction,
+        "deleted": exists
+    });
+    let _ = crate::sync::push_delta(
+        &state.config,
+        "comment_reactions",
+        comment_id,
+        "toggle",
+        payload,
+    );
 
     // Update parent issue timestamp
     let issue_id: i32 = conn

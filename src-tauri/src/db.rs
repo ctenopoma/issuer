@@ -1,4 +1,3 @@
-use crate::config::AppConfig;
 use rusqlite::Connection;
 use std::path::Path;
 
@@ -19,14 +18,16 @@ pub fn establish_connection<P: AsRef<Path>>(db_path: P) -> rusqlite::Result<Conn
             assignee   TEXT    DEFAULT '',
             created_at TEXT    NOT NULL,
             updated_at TEXT    NOT NULL,
-            milestone_id INTEGER
+            milestone_id INTEGER,
+            is_deleted INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS comments (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,
             issue_id   INTEGER NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
             body       TEXT    NOT NULL,
             created_by TEXT    NOT NULL,
-            created_at TEXT    NOT NULL
+            created_at TEXT    NOT NULL,
+            is_deleted INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS milestones (
             id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -36,7 +37,8 @@ pub fn establish_connection<P: AsRef<Path>>(db_path: P) -> rusqlite::Result<Conn
             due_date    TEXT,
             status      TEXT NOT NULL DEFAULT 'planned',
             created_at  TEXT NOT NULL,
-            updated_at  TEXT NOT NULL
+            updated_at  TEXT NOT NULL,
+            is_deleted  INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS labels (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -85,29 +87,19 @@ pub fn establish_connection<P: AsRef<Path>>(db_path: P) -> rusqlite::Result<Conn
             "ALTER TABLE issues ADD COLUMN milestone_id INTEGER REFERENCES milestones(id) ON DELETE SET NULL"
         )?;
     }
+
+    // Add is_deleted column to issues, comments, milestones
+    if !columns.iter().any(|c| c == "is_deleted") {
+        conn.execute_batch(
+            "ALTER TABLE issues ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE comments ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;
+             ALTER TABLE milestones ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0;",
+        )?;
+    }
+
     let _ = conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_issues_milestone_id ON issues(milestone_id)",
     );
 
     Ok(conn)
-}
-
-pub fn sync_db_back(config: &AppConfig) {
-    if !config.is_local_relaunch || !config.db_path.exists() {
-        return;
-    }
-
-    if let Ok(conn) = Connection::open(&config.db_path) {
-        let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-    }
-
-    let db_files = ["data.db", "data.db-wal", "data.db-shm"];
-    for file in db_files {
-        let src = config.local_dir.join(file);
-        let dst = config.original_dir.join(file);
-        if src.exists() {
-            let _ = std::fs::copy(&src, &dst);
-            let _ = std::fs::remove_file(&src); // cleanup local db file after syncing back
-        }
-    }
 }
