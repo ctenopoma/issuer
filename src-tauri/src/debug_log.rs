@@ -1,7 +1,10 @@
+#[cfg(debug_assertions)]
 use std::fs::OpenOptions;
+#[cfg(debug_assertions)]
 use std::io::Write;
 
 /// Write a debug log line to issuer_debug.log in the exe's directory.
+#[cfg(debug_assertions)]
 pub fn log(msg: &str) {
     let log_path = std::env::current_exe()
         .ok()
@@ -13,3 +16,7 @@ pub fn log(msg: &str) {
         let _ = writeln!(f, "[{}] {}", now, msg);
     }
 }
+
+/// Release ビルドでは何もしないスタブを用意して呼び出し側の変更不要にする。
+#[cfg(not(debug_assertions))]
+pub fn log(_msg: &str) {}
