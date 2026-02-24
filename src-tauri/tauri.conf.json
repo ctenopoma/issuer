@@ -4,8 +4,8 @@
   "version": "1.1.1",
   "identifier": "com.ctenopoma.issuer",
   "build": {
-    "beforeDevCommand": "npm.cmd run dev",
-    "beforeBuildCommand": "npm.cmd run build",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
