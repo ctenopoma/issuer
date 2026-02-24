@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx tauri dev)"
+      "Bash(npx tauri dev)",
+      "Bash(git clone:*)"
     ]
   }
 }

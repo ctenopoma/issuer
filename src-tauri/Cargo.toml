@@ -1,6 +1,6 @@
 [package]
 name = "issuer"
-version = "1.0.0"
+version = "1.1.0"
 description = "Issue管理画面 — Tauri Desktop App"
 authors = ["Ctenopoma"]
 edition = "2021"

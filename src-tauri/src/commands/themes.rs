@@ -255,7 +255,7 @@ pub fn list_remote_themes(
     }
 
     // GitHub API でリポジトリ一覧を取得
-    let url = "https://api.github.com/orgs/Issuer-Theme/repos?per_page=100";
+    let url = "https://api.github.com/orgs/IssuerTheme/repos?per_page=100";
     let client = reqwest::blocking::Client::builder()
         .user_agent("Issuer-App/1.0")
         .build()
@@ -296,7 +296,7 @@ pub fn list_remote_themes(
                 version: "".to_string(),
                 author: repo["owner"]["login"]
                     .as_str()
-                    .unwrap_or("Issuer-Theme")
+                    .unwrap_or("IssuerTheme")
                     .to_string(),
                 preview_url: None,
                 installed: installed_ids.contains(&id),
@@ -326,7 +326,7 @@ pub fn download_theme(
 
     let repo_name = format!("theme-{}", theme_id);
     let url = format!(
-        "https://api.github.com/repos/Issuer-Theme/{}/zipball/main",
+        "https://api.github.com/repos/IssuerTheme/{}/zipball/main",
         repo_name
     );
 
@@ -354,7 +354,7 @@ pub fn download_theme(
     let mut archive = zip::ZipArchive::new(cursor).map_err(|e| e.to_string())?;
 
     // GitHub zipball はルートにリポジトリ名のディレクトリがある
-    // 例: Issuer-Theme-theme-nordic-abc1234/theme.json
+    // 例: IssuerTheme-theme-nordic-abc1234/theme.json
     // これをフラットに展開する
     let prefix = archive
         .by_index(0)

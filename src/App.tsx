@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import IssueList from './components/IssueList';
+import Dashboard from './components/Dashboard';
 import IssueDetail from './components/IssueDetail';
 import NewIssue from './components/NewIssue';
 import MilestoneProgress from './components/MilestoneProgress';
@@ -201,13 +201,15 @@ export default function App() {
 
       <main className="max-w-[980px] mx-auto py-6 px-6">
         {currentView === 'LIST' && (
-          <IssueList
-            key={`list-${refreshKey}`}
+          <Dashboard
+            dashboard={currentTheme.dashboard}
+            savedFilter={savedFilter}
+            onSaveFilter={handleSaveFilter}
             onSelectIssue={(id) => navigateTo('DETAIL', id)}
             onNewIssue={() => navigateTo('NEW')}
             onShowMilestoneProgress={() => navigateTo('MILESTONE')}
-            savedFilter={savedFilter}
-            onSaveFilter={handleSaveFilter}
+            onOpenSettings={handleOpenSettings}
+            refreshKey={refreshKey}
           />
         )}
         {currentView === 'DETAIL' && selectedIssueId && (
