@@ -147,6 +147,40 @@ function linkify(text: string): string {
     return result;
 }
 
+/**
+ * Component for loading images from UNC paths via Rust backend (base64).
+ * Used when convertFileSrc() cannot handle network paths.
+ */
+function UncImage({ path, alt }: { path: string; alt: string }) {
+    const [src, setSrc] = useState<string | null>(null);
+    const [error, setError] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        api.readImageBase64(path).then(dataUri => {
+            if (!cancelled) setSrc(dataUri);
+        }).catch(() => {
+            if (!cancelled) setError(true);
+        });
+        return () => { cancelled = true; };
+    }, [path]);
+
+    if (error) {
+        return <span className="text-red-500 text-sm">[画像を読み込めません: {path}]</span>;
+    }
+    if (!src) {
+        return <span className="text-gray-400 text-sm">画像を読み込み中...</span>;
+    }
+    return (
+        <img
+            src={src}
+            alt={alt}
+            className="max-w-full rounded-md border border-brand-border my-2"
+            loading="lazy"
+        />
+    );
+}
+
 // Cache the assets directory path
 let cachedAssetsDir: string | null = null;
 
@@ -168,6 +202,10 @@ function resolveImageUrls(text: string, assetsDir: string | null): string {
             if (path.match(/^https?:\/\//) || path.startsWith('data:')) {
                 return match; // already a URL, skip
             }
+            if (path.startsWith('//')) {
+                // UNC path — convertFileSrc doesn't support it, use backend base64 loading
+                return `![${alt}](unc-image:${path})`;
+            }
             if (path.match(/^[A-Za-z]:\//)) {
                 // Absolute Windows path
                 return `![${alt}](${convertFileSrc(path)})`;
@@ -175,7 +213,11 @@ function resolveImageUrls(text: string, assetsDir: string | null): string {
             if (path.startsWith('assets/') && assetsDir) {
                 // Legacy relative path
                 const filename = path.replace('assets/', '');
-                return `![${alt}](${convertFileSrc(assetsDir + '/' + filename)})`;
+                const fullPath = assetsDir + '/' + filename;
+                if (fullPath.startsWith('//')) {
+                    return `![${alt}](unc-image:${fullPath})`;
+                }
+                return `![${alt}](${convertFileSrc(fullPath)})`;
             }
             return match;
         }
@@ -272,6 +314,9 @@ export default function MarkdownView({ content, onNavigateToIssue }: Props) {
                     );
                 },
                 img({ src, alt }) {
+                    if (src && src.startsWith('unc-image:')) {
+                        return <UncImage path={src.slice('unc-image:'.length)} alt={alt || ''} />;
+                    }
                     return (
                         <img
                             src={src || ''}

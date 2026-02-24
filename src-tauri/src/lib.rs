@@ -96,6 +96,7 @@ pub fn run() {
             commands::comments::delete_comment,
             commands::attachments::paste_image,
             commands::attachments::get_assets_dir,
+            commands::attachments::read_image_base64,
             commands::outlook::create_outlook_draft,
             commands::milestones::get_milestones,
             commands::milestones::create_milestone,

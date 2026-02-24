@@ -58,6 +58,7 @@ if (isTauri) {
                 { milestone_id: 2, total: 0, closed: 0, percent: 0 },
             ];
             case 'paste_image': return 'assets/mock.png';
+            case 'read_image_base64': return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
             case 'get_os_username': return 'mock_user';
             case 'get_user_display_name': return null;
             case 'set_user_display_name': return null;
@@ -112,6 +113,7 @@ export const api = {
     // Attachments & Outlook
     getAssetsDir: () => invoke('get_assets_dir') as Promise<string>,
     pasteImage: () => invoke('paste_image') as Promise<string>,
+    readImageBase64: (path: string) => invoke('read_image_base64', { path }) as Promise<string>,
     openOutlook: (to: string, subject: string, body: string) =>
         invoke('create_outlook_draft', { to, subject, body }) as Promise<void>,
 
