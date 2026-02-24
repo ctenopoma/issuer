@@ -1,4 +1,4 @@
-import { Issue, Comment, Milestone, ReactionEntry, ReactionSummary, MilestoneProgress } from '../types';
+import { Issue, Comment, Milestone, ReactionEntry, ReactionSummary, MilestoneProgress, ThemeConfig, ThemeMetadata } from '../types';
 
 // Detect if we're running inside Tauri
 const isTauri = !!(window as any).__TAURI_INTERNALS__;
@@ -22,6 +22,24 @@ if (isTauri) {
 } else {
     // Browser mock for development preview
     console.warn('[Issuer] Running outside Tauri — using mock data.');
+    
+    // @ts-ignore
+    const themeJsonFiles = import.meta.glob('../../themes/*/theme.json', { eager: true });
+    // @ts-ignore
+    const themeCssFiles = import.meta.glob('../../themes/*/style.css', { eager: true, query: '?raw', import: 'default' });
+
+    const MOCK_THEMES: any[] = [];
+    const MOCK_THEME_CSS: Record<string, string> = {};
+
+    for (const path in themeJsonFiles) {
+        const themeDef = (themeJsonFiles[path] as any).default || themeJsonFiles[path];
+        MOCK_THEMES.push(themeDef);
+        const cssPath = path.replace('theme.json', 'style.css');
+        if (themeCssFiles[cssPath]) {
+            MOCK_THEME_CSS[themeDef.id] = themeCssFiles[cssPath] as string;
+        }
+    }
+
     const mockIssues: Issue[] = [
         { id: 1, title: 'ログイン画面のデザイン変更', body: '現在のログイン画面のデザインを刷新します。\n\n- カラーパレットの統一\n- モバイル対応\n- アクセシビリティ改善\n\nファイルパス: C:\\Users\\test\\project\\design.psd\n関連 Issue は #2 を参照', status: 'OPEN', created_by: 'tanaka', assignee: 'suzuki', milestone_id: 1, created_at: '2026-02-15T09:30:00', updated_at: '2026-02-18T14:20:00' },
         { id: 2, title: 'API レスポンス速度の改善', body: 'データベースクエリの最適化とキャッシュ導入で API レスポンスを高速化する。', status: 'OPEN', created_by: 'suzuki', assignee: 'tanaka', milestone_id: null, created_at: '2026-02-16T10:00:00', updated_at: '2026-02-17T11:00:00' },
@@ -58,6 +76,7 @@ if (isTauri) {
                 { milestone_id: 2, total: 0, closed: 0, percent: 0 },
             ];
             case 'paste_image': return 'assets/mock.png';
+            case 'read_image_base64': return 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
             case 'get_os_username': return 'mock_user';
             case 'get_user_display_name': return null;
             case 'set_user_display_name': return null;
@@ -74,6 +93,29 @@ if (isTauri) {
             case 'get_issue_labels': return ['feature', 'improvement'];
             case 'get_labels_map': return [[1, ['feature']], [2, ['bug', 'improvement']]];
             case 'set_issue_labels': return null;
+            case 'get_installed_themes': return MOCK_THEMES;
+            case 'get_active_theme': {
+                const activeId = localStorage.getItem('mock-active-theme-id') || 'cockpit';
+                return MOCK_THEMES.find((t: any) => t.id === activeId) || null;
+            }
+            case 'set_active_theme': {
+                if (args?.themeId) {
+                    localStorage.setItem('mock-active-theme-id', args.themeId);
+                }
+                return null;
+            }
+            case 'read_theme_file': {
+                if (args?.filePath === 'style.css') {
+                    return MOCK_THEME_CSS[args.themeId] || '';
+                }
+                return '';
+            }
+            case 'get_theme_asset_path': return '';
+            case 'delete_theme': return null;
+            case 'get_proxy_url': return null;
+            case 'set_proxy_url': return null;
+            case 'list_remote_themes': return [];
+            case 'download_theme': return null;
             default: return null;
         }
     };
@@ -102,6 +144,7 @@ export const api = {
     // Attachments & Outlook
     getAssetsDir: () => invoke('get_assets_dir') as Promise<string>,
     pasteImage: () => invoke('paste_image') as Promise<string>,
+    readImageBase64: (path: string) => invoke('read_image_base64', { path }) as Promise<string>,
     openOutlook: (to: string, subject: string, body: string) =>
         invoke('create_outlook_draft', { to, subject, body }) as Promise<void>,
 
@@ -139,4 +182,18 @@ export const api = {
     getOsUsername: () => invoke('get_os_username') as Promise<string>,
     getUserDisplayName: () => invoke('get_user_display_name') as Promise<string | null>,
     setUserDisplayName: (name: string | null) => invoke('set_user_display_name', { name }) as Promise<void>,
+
+    // Proxy
+    getProxyUrl: () => invoke('get_proxy_url') as Promise<string | null>,
+    setProxyUrl: (url: string | null) => invoke('set_proxy_url', { url }) as Promise<void>,
+
+    // Themes
+    getInstalledThemes: () => invoke('get_installed_themes') as Promise<ThemeConfig[]>,
+    getActiveTheme: () => invoke('get_active_theme') as Promise<ThemeConfig | null>,
+    setActiveTheme: (themeId: string | null) => invoke('set_active_theme', { themeId }) as Promise<void>,
+    readThemeFile: (themeId: string, filePath: string) => invoke('read_theme_file', { themeId, filePath }) as Promise<string>,
+    getThemeAssetPath: (themeId: string, assetPath: string) => invoke('get_theme_asset_path', { themeId, assetPath }) as Promise<string>,
+    deleteTheme: (themeId: string) => invoke('delete_theme', { themeId }) as Promise<void>,
+    listRemoteThemes: () => invoke('list_remote_themes') as Promise<ThemeMetadata[]>,
+    downloadTheme: (themeId: string) => invoke('download_theme', { themeId }) as Promise<ThemeConfig>,
 };

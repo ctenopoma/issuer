@@ -57,3 +57,77 @@ export interface FilterState {
     currentTab: 'OPEN' | 'CLOSED' | 'ALL';
     milestoneId: number | null;
 }
+
+// --- Theme types ---
+
+export type WidgetType =
+    | 'issue-summary'
+    | 'issue-list'
+    | 'flower-garden'
+    | 'milestone-gantt'
+    | 'milestone-progress'
+    | 'recent-activity'
+    | 'assignee-workload'
+    | 'label-distribution'
+    | 'quick-actions';
+
+export interface WidgetPosition {
+    col: number;
+    row: number;
+    colSpan?: number;
+    rowSpan?: number;
+}
+
+export interface WidgetConfig {
+    type: WidgetType;
+    position: WidgetPosition;
+    config: Record<string, unknown>;
+}
+
+export type DashboardLayout = 'single-col' | 'grid-2col' | 'grid-3col';
+
+export interface DashboardConfig {
+    layout: DashboardLayout;
+    widgets: WidgetConfig[];
+}
+
+export interface ThemeFontConfig {
+    family: string;
+    importUrl?: string;
+}
+
+export interface ThemeColors {
+    'brand-bg': string;
+    'brand-card': string;
+    'brand-border': string;
+    'brand-text-main': string;
+    'brand-text-muted': string;
+    'brand-primary': string;
+    'brand-open': string;
+    'brand-closed': string;
+    'brand-danger': string;
+    [key: string]: string;
+}
+
+export interface ThemeConfig {
+    id: string;
+    name: string;
+    description?: string;
+    version?: string;
+    author?: string;
+    preview?: string;
+    colors: ThemeColors;
+    font?: ThemeFontConfig;
+    dashboard: DashboardConfig;
+    customCss?: boolean;
+}
+
+export interface ThemeMetadata {
+    id: string;
+    name: string;
+    description: string;
+    version: string;
+    author: string;
+    preview_url?: string;
+    installed: boolean;
+}

@@ -1,7 +1,9 @@
 use arboard::Clipboard;
+use base64::{Engine as _, engine::general_purpose};
 use image::{ImageBuffer, RgbaImage};
 use uuid::Uuid;
 use std::fs;
+use std::path::Path;
 use tauri::State;
 use crate::AppState;
 
@@ -35,4 +37,24 @@ pub fn paste_image(state: State<'_, AppState>) -> Result<String, String> {
     img_buffer.save(&file_path).map_err(|e| e.to_string())?;
     
     Ok(file_path.to_string_lossy().replace('\\', "/"))
+}
+
+#[tauri::command]
+pub fn read_image_base64(path: String) -> Result<String, String> {
+    let file_path = Path::new(&path);
+    if !file_path.exists() {
+        return Err(format!("File not found: {}", path));
+    }
+    let data = fs::read(file_path).map_err(|e| format!("Failed to read file: {}", e))?;
+    let mime = match file_path.extension().and_then(|e| e.to_str()) {
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        Some("svg") => "image/svg+xml",
+        Some("bmp") => "image/bmp",
+        _ => "image/png",
+    };
+    let b64 = general_purpose::STANDARD.encode(&data);
+    Ok(format!("data:{};base64,{}", mime, b64))
 }

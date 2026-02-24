@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import IssueList from './components/IssueList';
+import Dashboard from './components/Dashboard';
 import IssueDetail from './components/IssueDetail';
 import NewIssue from './components/NewIssue';
 import MilestoneProgress from './components/MilestoneProgress';
 import Settings from './components/Settings';
 import { api } from './lib/api';
-import { FilterState } from './types';
+import { FilterState, ThemeConfig } from './types';
 import { listen } from '@tauri-apps/api/event';
+import { DEFAULT_THEME, applyTheme } from './lib/theme';
 
 type ViewType = 'LIST' | 'DETAIL' | 'NEW' | 'MILESTONE' | 'SETTINGS';
 
@@ -21,6 +22,7 @@ export default function App() {
   const [windowsName, setWindowsName] = useState('');
   const [savedFilter, setSavedFilter] = useState<FilterState | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [currentTheme, setCurrentTheme] = useState<ThemeConfig>(DEFAULT_THEME);
   // History stack for back navigation
   const [history, setHistory] = useState<{ view: ViewType, issueId?: number }[]>([]);
 
@@ -74,6 +76,20 @@ export default function App() {
       } catch (e) {
         console.error('Failed to initialize:', e);
         setShowNameDialog(true);
+      }
+
+      // テーマの初期化
+      try {
+        const activeTheme = await api.getActiveTheme();
+        if (activeTheme) {
+          setCurrentTheme(activeTheme);
+          const loadCss = activeTheme.customCss
+            ? () => api.readThemeFile(activeTheme.id, 'style.css').catch(() => null)
+            : undefined;
+          await applyTheme(activeTheme, loadCss);
+        }
+      } catch (e) {
+        console.error('Failed to load theme:', e);
       }
     };
     init();
@@ -159,7 +175,7 @@ export default function App() {
     <div className="min-h-screen bg-brand-bg text-brand-text-main">
       <header className="bg-brand-card shadow-sm px-6 py-3 flex items-center justify-between border-b border-brand-border">
         <h1 className="text-[20px] font-bold text-brand-text-main cursor-pointer" onClick={() => navigateTo('LIST')}>
-          Issue管理画面
+          Issuer
         </h1>
         <div className="flex items-center gap-4">
           {currentUser && (
@@ -185,13 +201,15 @@ export default function App() {
 
       <main className="max-w-[980px] mx-auto py-6 px-6">
         {currentView === 'LIST' && (
-          <IssueList
-            key={`list-${refreshKey}`}
+          <Dashboard
+            dashboard={currentTheme.dashboard}
+            savedFilter={savedFilter}
+            onSaveFilter={handleSaveFilter}
             onSelectIssue={(id) => navigateTo('DETAIL', id)}
             onNewIssue={() => navigateTo('NEW')}
             onShowMilestoneProgress={() => navigateTo('MILESTONE')}
-            savedFilter={savedFilter}
-            onSaveFilter={handleSaveFilter}
+            onOpenSettings={handleOpenSettings}
+            refreshKey={refreshKey}
           />
         )}
         {currentView === 'DETAIL' && selectedIssueId && (
@@ -222,6 +240,8 @@ export default function App() {
             currentUser={currentUser}
             onUserChanged={setCurrentUser}
             onBack={navigateBack}
+            currentThemeId={currentTheme.id}
+            onThemeChanged={setCurrentTheme}
           />
         )}
       </main>
