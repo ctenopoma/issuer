@@ -175,7 +175,7 @@ export default function App() {
     <div className="min-h-screen bg-brand-bg text-brand-text-main">
       <header className="bg-brand-card shadow-sm px-6 py-3 flex items-center justify-between border-b border-brand-border">
         <h1 className="text-[20px] font-bold text-brand-text-main cursor-pointer" onClick={() => navigateTo('LIST')}>
-          Issue管理画面
+          Issuer
         </h1>
         <div className="flex items-center gap-4">
           {currentUser && (
