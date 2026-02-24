@@ -234,6 +234,21 @@ pub fn delete_theme(theme_id: String, state: tauri::State<'_, AppState>) -> Resu
     Ok(())
 }
 
+/// プロキシ設定を反映した HTTP クライアントを構築
+fn build_http_client(state: &AppState) -> Result<reqwest::blocking::Client, String> {
+    let settings = crate::settings::read_settings(&state.config);
+    let mut builder = reqwest::blocking::Client::builder()
+        .user_agent("Issuer-App/1.0");
+
+    if let Some(proxy_url) = settings.proxy_url {
+        let proxy = reqwest::Proxy::all(&proxy_url)
+            .map_err(|e| format!("Invalid proxy URL: {}", e))?;
+        builder = builder.proxy(proxy);
+    }
+
+    builder.build().map_err(|e| e.to_string())
+}
+
 /// GitHub Organization からリモートテーマ一覧を取得
 #[tauri::command]
 pub fn list_remote_themes(
@@ -256,10 +271,7 @@ pub fn list_remote_themes(
 
     // GitHub API でリポジトリ一覧を取得
     let url = "https://api.github.com/orgs/IssuerTheme/repos?per_page=100";
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("Issuer-App/1.0")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = build_http_client(&state)?;
 
     let response = client.get(url).send().map_err(|e| e.to_string())?;
 
@@ -330,10 +342,7 @@ pub fn download_theme(
         repo_name
     );
 
-    let client = reqwest::blocking::Client::builder()
-        .user_agent("Issuer-App/1.0")
-        .build()
-        .map_err(|e| e.to_string())?;
+    let client = build_http_client(&state)?;
 
     let response = client.get(&url).send().map_err(|e| e.to_string())?;
 

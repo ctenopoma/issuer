@@ -14,19 +14,25 @@ interface SettingsProps {
 export default function Settings({ onBack, currentUser, onUserChanged, currentThemeId, onThemeChanged }: SettingsProps) {
     const [nameInput, setNameInput] = useState(currentUser);
     const [windowsName, setWindowsName] = useState('');
+    const [proxyInput, setProxyInput] = useState('');
     const [isSaving, setIsSaving] = useState(false);
 
     useEffect(() => {
-        // Fetch windows name for placeholder
-        const fetchWindowsName = async () => {
+        const fetchInitialData = async () => {
             try {
                 const osName = await api.getOsUsername();
                 setWindowsName(osName);
             } catch (e) {
                 console.error('Failed to get windows name:', e);
             }
+            try {
+                const proxy = await api.getProxyUrl();
+                if (proxy) setProxyInput(proxy);
+            } catch (e) {
+                console.error('Failed to get proxy url:', e);
+            }
         };
-        fetchWindowsName();
+        fetchInitialData();
     }, []);
 
     const handleSave = async () => {
@@ -37,6 +43,8 @@ export default function Settings({ onBack, currentUser, onUserChanged, currentTh
                 await api.setUserDisplayName(trimmed);
                 onUserChanged(trimmed);
             }
+            const proxyTrimmed = proxyInput.trim();
+            await api.setProxyUrl(proxyTrimmed || null);
         } finally {
             setIsSaving(false);
             onBack();
@@ -98,6 +106,24 @@ export default function Settings({ onBack, currentUser, onUserChanged, currentTh
                         <p className="text-xs text-brand-text-muted mt-2 leading-relaxed">
                             Issue やコメントで表示される名前です。<br />
                             空欄にして「リセット」すると Windows のユーザー名（{windowsName}）に戻ります。
+                        </p>
+                    </div>
+
+                    <div className="pt-6 border-t border-brand-border mb-6">
+                        <label className="block text-sm font-medium text-brand-text-main mb-2">
+                            プロキシ設定
+                        </label>
+                        <input
+                            type="text"
+                            value={proxyInput}
+                            onChange={e => setProxyInput(e.target.value)}
+                            placeholder="http://proxy.example.com:8080"
+                            className="w-full border border-brand-border rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-primary focus:border-transparent"
+                            disabled={isSaving}
+                        />
+                        <p className="text-xs text-brand-text-muted mt-2 leading-relaxed">
+                            テーマのダウンロード時に使用するプロキシアドレスです。<br />
+                            空欄にするとプロキシを使用しません。
                         </p>
                     </div>
 

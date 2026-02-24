@@ -113,6 +113,8 @@ pub fn run() {
             settings::get_os_username,
             settings::get_user_display_name,
             settings::set_user_display_name,
+            settings::get_proxy_url,
+            settings::set_proxy_url,
             commands::themes::get_installed_themes,
             commands::themes::get_active_theme,
             commands::themes::set_active_theme,

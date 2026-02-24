@@ -80,6 +80,8 @@ if (isTauri) {
             case 'read_theme_file': return '';
             case 'get_theme_asset_path': return '';
             case 'delete_theme': return null;
+            case 'get_proxy_url': return null;
+            case 'set_proxy_url': return null;
             case 'list_remote_themes': return [];
             case 'download_theme': return null;
             default: return null;
@@ -147,6 +149,10 @@ export const api = {
     getOsUsername: () => invoke('get_os_username') as Promise<string>,
     getUserDisplayName: () => invoke('get_user_display_name') as Promise<string | null>,
     setUserDisplayName: (name: string | null) => invoke('set_user_display_name', { name }) as Promise<void>,
+
+    // Proxy
+    getProxyUrl: () => invoke('get_proxy_url') as Promise<string | null>,
+    setProxyUrl: (url: string | null) => invoke('set_proxy_url', { url }) as Promise<void>,
 
     // Themes
     getInstalledThemes: () => invoke('get_installed_themes') as Promise<ThemeConfig[]>,
