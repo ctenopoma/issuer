@@ -88,7 +88,9 @@ pub fn create_issue(
     })?;
     let now = chrono::Local::now().to_rfc3339();
 
-    let id = (uuid::Uuid::new_v4().as_fields().0 & 0x7FFFFFFF) as i32;
+    let id: i32 = conn
+        .query_row("SELECT COALESCE(MAX(id), 0) + 1 FROM issues", [], |row| row.get(0))
+        .map_err(|e| e.to_string())?;
 
     conn.execute(
         "INSERT INTO issues (id, title, body, status, created_by, assignee, created_at, updated_at) VALUES (?1, ?2, ?3, 'OPEN', ?4, ?5, ?6, ?6)",
