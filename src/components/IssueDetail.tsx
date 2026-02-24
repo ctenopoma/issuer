@@ -278,83 +278,83 @@ export default function IssueDetail({ issueId, onBack, onNavigateToIssue, curren
 
                 {/* Meta tags */}
                 <div className="flex items-center gap-2 text-[13px] border-b border-brand-border pb-3 flex-wrap">
-                <span className={`px-3 py-1 rounded-full font-bold text-white flex items-center gap-1 ${issue.status === 'OPEN' ? 'bg-brand-open' : 'bg-brand-closed'}`}>
-                    {issue.status === 'OPEN' ? (
-                        <div className="w-3 h-3 rounded-full border-[2px] border-current"></div>
-                    ) : (
-                        <div className="w-3 h-3 rounded-full bg-current"></div>
+                    <span className={`px-3 py-1 rounded-full font-bold text-white flex items-center gap-1 ${issue.status === 'OPEN' ? 'bg-brand-open' : 'bg-brand-closed'}`}>
+                        {issue.status === 'OPEN' ? (
+                            <div className="w-3 h-3 rounded-full border-[2px] border-current"></div>
+                        ) : (
+                            <div className="w-3 h-3 rounded-full bg-current"></div>
+                        )}
+                        {issue.status}
+                    </span>
+                    <span className="text-brand-text-muted ml-2">
+                        <strong className="text-brand-text-main">{issue.created_by}</strong> が {new Date(issue.created_at).toLocaleDateString()} に作成
+                    </span>
+                    <span className="text-brand-text-muted">・</span>
+                    <span className="text-brand-text-muted">{comments.length} 件のコメント</span>
+
+                    {/* Labels */}
+                    {issueLabels.length > 0 && (
+                        <>
+                            <span className="text-brand-text-muted">・</span>
+                            {issueLabels.map(label => (
+                                <span key={label} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-brand-primary border border-blue-200">
+                                    {label}
+                                </span>
+                            ))}
+                        </>
                     )}
-                    {issue.status}
-                </span>
-                <span className="text-brand-text-muted ml-2">
-                    <strong className="text-brand-text-main">{issue.created_by}</strong> が {new Date(issue.created_at).toLocaleDateString()} に作成
-                </span>
-                <span className="text-brand-text-muted">・</span>
-                <span className="text-brand-text-muted">{comments.length} 件のコメント</span>
 
-                {/* Labels */}
-                {issueLabels.length > 0 && (
-                    <>
-                        <span className="text-brand-text-muted">・</span>
-                        {issueLabels.map(label => (
-                            <span key={label} className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-50 text-brand-primary border border-blue-200">
-                                {label}
+                    {/* Milestone */}
+                    {milestoneName && (
+                        <>
+                            <span className="text-brand-text-muted">・</span>
+                            <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-brand-primary/10 text-brand-primary border border-brand-primary/20">
+                                📌 {milestoneName}
                             </span>
-                        ))}
-                    </>
-                )}
+                        </>
+                    )}
 
-                {/* Milestone */}
-                {milestoneName && (
-                    <>
-                        <span className="text-brand-text-muted">・</span>
-                        <span className="px-2 py-0.5 rounded-full text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200">
-                            📌 {milestoneName}
-                        </span>
-                    </>
-                )}
+                    {/* Assignee */}
+                    {issue.assignee && (
+                        <>
+                            <span className="text-brand-text-muted">・</span>
+                            <span className="text-brand-text-muted">担当: <strong className="text-brand-text-main">{issue.assignee}</strong></span>
+                        </>
+                    )}
 
-                {/* Assignee */}
-                {issue.assignee && (
-                    <>
-                        <span className="text-brand-text-muted">・</span>
-                        <span className="text-brand-text-muted">担当: <strong className="text-brand-text-main">{issue.assignee}</strong></span>
-                    </>
-                )}
+                    <div className="flex-1"></div>
 
-                <div className="flex-1"></div>
+                    {/* Edit Button */}
+                    {!isEditing && (
+                        <button onClick={startEditing} className="flex items-center gap-1.5 border border-brand-border bg-brand-card text-brand-text-main px-3 py-1.5 rounded-md text-sm hover:bg-gray-50 transition shadow-sm font-medium">
+                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
+                            編集
+                        </button>
+                    )}
 
-                {/* Edit Button */}
-                {!isEditing && (
-                    <button onClick={startEditing} className="flex items-center gap-1.5 border border-brand-border bg-brand-card text-brand-text-main px-3 py-1.5 rounded-md text-sm hover:bg-gray-50 transition shadow-sm font-medium">
-                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>
-                        編集
+                    {/* Open/Close Toggle */}
+                    <button
+                        onClick={handleToggleStatus}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition ${issue.status === 'OPEN'
+                            ? 'bg-brand-closed text-white hover:opacity-90'
+                            : 'bg-brand-open text-white hover:opacity-90'
+                            }`}
+                    >
+                        {issue.status === 'OPEN' ? 'Close Issue' : 'Reopen Issue'}
                     </button>
-                )}
 
-                {/* Open/Close Toggle */}
-                <button
-                    onClick={handleToggleStatus}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium shadow-sm transition ${issue.status === 'OPEN'
-                        ? 'bg-brand-closed text-white hover:opacity-90'
-                        : 'bg-brand-open text-white hover:opacity-90'
-                        }`}
-                >
-                    {issue.status === 'OPEN' ? 'Close Issue' : 'Reopen Issue'}
-                </button>
+                    <button onClick={handleShareOutlook} className="flex items-center gap-1.5 border border-brand-border bg-brand-card text-brand-text-main px-3 py-1.5 rounded-md text-sm hover:bg-gray-50 transition shadow-sm font-medium">
+                        <span>✉️</span> Outlookで共有
+                    </button>
 
-                <button onClick={handleShareOutlook} className="flex items-center gap-1.5 border border-brand-border bg-brand-card text-brand-text-main px-3 py-1.5 rounded-md text-sm hover:bg-gray-50 transition shadow-sm font-medium">
-                    <span>✉️</span> Outlookで共有
-                </button>
-
-                {/* Delete Button */}
-                <button
-                    onClick={() => setShowDeleteConfirm(true)}
-                    className="flex items-center gap-1 text-brand-danger px-2 py-1.5 rounded-md text-sm hover:bg-red-50 transition font-medium"
-                    title="削除"
-                >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                </button>
+                    {/* Delete Button */}
+                    <button
+                        onClick={() => setShowDeleteConfirm(true)}
+                        className="flex items-center gap-1 text-brand-danger px-2 py-1.5 rounded-md text-sm hover:bg-red-50 transition font-medium"
+                        title="削除"
+                    >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
                 </div>
             </div>
 

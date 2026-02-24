@@ -22,6 +22,24 @@ if (isTauri) {
 } else {
     // Browser mock for development preview
     console.warn('[Issuer] Running outside Tauri — using mock data.');
+    
+    // @ts-ignore
+    const themeJsonFiles = import.meta.glob('../../themes/*/theme.json', { eager: true });
+    // @ts-ignore
+    const themeCssFiles = import.meta.glob('../../themes/*/style.css', { eager: true, query: '?raw', import: 'default' });
+
+    const MOCK_THEMES: any[] = [];
+    const MOCK_THEME_CSS: Record<string, string> = {};
+
+    for (const path in themeJsonFiles) {
+        const themeDef = (themeJsonFiles[path] as any).default || themeJsonFiles[path];
+        MOCK_THEMES.push(themeDef);
+        const cssPath = path.replace('theme.json', 'style.css');
+        if (themeCssFiles[cssPath]) {
+            MOCK_THEME_CSS[themeDef.id] = themeCssFiles[cssPath] as string;
+        }
+    }
+
     const mockIssues: Issue[] = [
         { id: 1, title: 'ログイン画面のデザイン変更', body: '現在のログイン画面のデザインを刷新します。\n\n- カラーパレットの統一\n- モバイル対応\n- アクセシビリティ改善\n\nファイルパス: C:\\Users\\test\\project\\design.psd\n関連 Issue は #2 を参照', status: 'OPEN', created_by: 'tanaka', assignee: 'suzuki', milestone_id: 1, created_at: '2026-02-15T09:30:00', updated_at: '2026-02-18T14:20:00' },
         { id: 2, title: 'API レスポンス速度の改善', body: 'データベースクエリの最適化とキャッシュ導入で API レスポンスを高速化する。', status: 'OPEN', created_by: 'suzuki', assignee: 'tanaka', milestone_id: null, created_at: '2026-02-16T10:00:00', updated_at: '2026-02-17T11:00:00' },
@@ -75,10 +93,23 @@ if (isTauri) {
             case 'get_issue_labels': return ['feature', 'improvement'];
             case 'get_labels_map': return [[1, ['feature']], [2, ['bug', 'improvement']]];
             case 'set_issue_labels': return null;
-            case 'get_installed_themes': return [];
-            case 'get_active_theme': return null;
-            case 'set_active_theme': return null;
-            case 'read_theme_file': return '';
+            case 'get_installed_themes': return MOCK_THEMES;
+            case 'get_active_theme': {
+                const activeId = localStorage.getItem('mock-active-theme-id') || 'cockpit';
+                return MOCK_THEMES.find((t: any) => t.id === activeId) || null;
+            }
+            case 'set_active_theme': {
+                if (args?.themeId) {
+                    localStorage.setItem('mock-active-theme-id', args.themeId);
+                }
+                return null;
+            }
+            case 'read_theme_file': {
+                if (args?.filePath === 'style.css') {
+                    return MOCK_THEME_CSS[args.themeId] || '';
+                }
+                return '';
+            }
             case 'get_theme_asset_path': return '';
             case 'delete_theme': return null;
             case 'get_proxy_url': return null;
