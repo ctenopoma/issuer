@@ -167,6 +167,43 @@ fn apply_delta(
     let changes = changes.unwrap();
 
     if payload.action == "insert" {
+        // Check for ID collision: if a different record already exists with this ID,
+        // reassign to MAX(id)+1 instead of overwriting.
+        let id_col_idx = changes.keys().position(|k| k == "id");
+        let mut effective_id = target_id;
+
+        if let Some(idx) = id_col_idx {
+            let existing_created_by: Option<String> = conn
+                .query_row(
+                    &format!("SELECT created_by FROM {} WHERE id = ?1", table),
+                    rusqlite::params![target_id],
+                    |row| row.get(0),
+                )
+                .ok();
+
+            let incoming_created_by = changes.get("created_by").and_then(|v| v.as_str());
+
+            // Collision: same ID exists but was created by a different user
+            if let (Some(existing), Some(incoming)) = (&existing_created_by, incoming_created_by) {
+                if existing != incoming {
+                    let new_id: i32 = conn
+                        .query_row(
+                            &format!("SELECT COALESCE(MAX(id), 0) + 1 FROM {}", table),
+                            [],
+                            |row| row.get(0),
+                        )
+                        .unwrap_or(target_id);
+                    crate::debug_log::log(&format!(
+                        "ID collision detected in {} id={}: reassigning to {}",
+                        table, target_id, new_id
+                    ));
+                    effective_id = new_id;
+                }
+            }
+
+            let _ = idx; // used above for guard check
+        }
+
         let columns: Vec<String> = changes.keys().cloned().collect();
         let placeholders: Vec<String> = (1..=columns.len()).map(|i| format!("?{}", i)).collect();
         let sql = format!(
@@ -178,6 +215,10 @@ fn apply_delta(
 
         let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
         for key in &columns {
+            if key == "id" {
+                params_vec.push(Box::new(effective_id));
+                continue;
+            }
             if let Some(val) = changes.get(key) {
                 if val.is_null() {
                     params_vec.push(Box::new(rusqlite::types::Null));
